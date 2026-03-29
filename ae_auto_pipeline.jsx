@@ -1023,9 +1023,29 @@ function processV2(comp, data, projectFolder) {
                 // 텍스트 스타일
                 var textDoc = aeLayer.property("Source Text").value;
                 textDoc.fontSize = tc.font_size || 60;
-                textDoc.font = (data.global_style && data.global_style.font_family) || "Noto Sans KR";
-                if (tc.font_weight === "bold" || tc.font_weight === "black") {
-                    textDoc.font = textDoc.font; // AE ExtendScript에서 bold는 별도 폰트명 필요
+
+                // 폰트 설정 - AE는 PostScript 이름 필요
+                // "Noto Sans KR" → "NotoSansKR-Bold" 등으로 변환
+                var fontWeight = tc.font_weight || "bold";
+                var fontFamily = (data.global_style && data.global_style.font_family) || "NotoSansKR";
+                // 공백/띄어쓰기 제거 (AE PostScript 이름 형식)
+                fontFamily = fontFamily.replace(/\s+/g, "");
+
+                var fontSuffix = "-Regular";
+                if (fontWeight === "bold" || fontWeight === "700") fontSuffix = "-Bold";
+                else if (fontWeight === "black" || fontWeight === "900") fontSuffix = "-Black";
+                else if (fontWeight === "medium" || fontWeight === "500") fontSuffix = "-Medium";
+                else if (fontWeight === "light" || fontWeight === "300") fontSuffix = "-Light";
+
+                try {
+                    textDoc.font = fontFamily + fontSuffix;
+                } catch (fontErr) {
+                    // PostScript 이름 실패 시 기본 폰트 사용
+                    try {
+                        textDoc.font = "Arial-BoldMT";
+                    } catch (fontErr2) {
+                        // Arial도 없으면 그냥 기본값 유지
+                    }
                 }
                 if (tc.color) {
                     textDoc.fillColor = tc.color;
