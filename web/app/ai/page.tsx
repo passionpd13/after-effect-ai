@@ -18,8 +18,8 @@ export default function AiModePage() {
   const [description, setDescription] = useState("");
   const [style, setStyle] = useState("cinematic");
 
-  // 시간 설정 (씬당 길이만 조절, 나머지는 AI가 알아서)
-  const [sceneDuration, setSceneDuration] = useState(10);
+  // 시간 설정 (전체 영상 길이만 조절)
+  const [videoDuration, setVideoDuration] = useState(15);
   const [format, setFormat] = useState("vertical");
   const [fps, setFps] = useState(30);
   const [generatedJson, setGeneratedJson] = useState("");
@@ -311,8 +311,8 @@ export default function AiModePage() {
           images: allImages,
           style,
           description,
-          total_duration: sceneDuration * images.length,
-          scene_duration: sceneDuration,
+          total_duration: videoDuration,
+          scene_duration: videoDuration,
           format,
           fps,
         }),
@@ -349,30 +349,28 @@ export default function AiModePage() {
       square: "정사각형 (1080x1080)",
     };
 
-    const estTotal = sceneDuration * Math.max(images.length, 2);
-
     return `다음 이미지들로 ancrid 수준의 고퀄리티 모션그래픽 영상용 JSON을 생성해주세요.
 
 ## 프로젝트 설정
 - 스타일: ${style}
 - 포맷: ${formatMap[format] || formatMap.vertical}
 - FPS: ${fps}
-- 씬당 길이: 약 ${sceneDuration}초
-- 총 영상 길이: 약 ${estTotal}초
-- settings: width/height/fps/total_duration 필수 포함
+- 전체 영상 길이: ${videoDuration}초 (settings.total_duration = ${videoDuration})
 ${description ? `- 설명: ${description}` : "- 이미지를 분석해서 내용에 맞게 자동 판단해주세요"}
 
 ## 사용 가능한 이미지 파일 (이 파일명만 사용!)
 ${imageList}
 ${hasCutoutsAvailable ? "※ _cutout.png 파일은 배경 제거된 객체입니다" : ""}
 
-## 핵심: 다양한 연출을 해주세요!
+## 핵심: 모든 이미지를 하나의 영상에서 다양하게 연출!
 
-### 이미지 연출 규칙
-- 한 씬에 여러 이미지를 동시에 배치 가능 (예: 배경 + 인물A + 인물B 같은 씬에)
-- 같은 이미지를 여러 씬에서 재사용 가능 (다른 위치/크기/효과로)
-- 같은 이미지를 한 씬에서 여러 레이어로 사용 가능 (다른 crop/scale로)
-- 이미지 순서는 자유롭게 (1→2→3 순서가 아니어도 됨)
+### 씬 구성 규칙 (매우 중요!)
+- 이미지 1장 = 씬 1개가 아닙니다!
+- 하나의 씬 안에서 모든 이미지가 다양하게 등장/퇴장/재등장해야 합니다
+- 씬 수는 AI가 자유롭게 결정 (3~8개 정도)
+- 각 씬에서 여러 이미지를 동시에 배치 (배경 + 이미지A + 이미지B + 텍스트 + 도형)
+- 같은 이미지를 여러 씬에서 재사용 (다른 위치/크기/효과로)
+- 같은 이미지를 한 씬에서 여러 레이어로 (다른 crop/scale)
 - 이미지를 다양한 위치에 배치 (중앙만 X → 좌상단, 우하단, 대각선 등)
 - 이미지 크기도 다양하게 (전체 배경, 작은 썸네일, PIP 등)
 
@@ -403,9 +401,10 @@ ${hasCutoutsAvailable ? "※ _cutout.png 파일은 배경 제거된 객체입니
 ## JSON 형식 규칙
 1. 스키마 정의 없이 데이터 JSON만 ($schema, definitions, properties 포함 금지)
 2. project, settings, scenes 필수
-3. settings.format="${format}", settings.fps=${fps}, settings.total_duration=${estTotal}
-4. 텍스트는 한국어
-5. 위 파일명만 정확히 사용 (존재하지 않는 파일명 사용 금지)
+3. settings.format="${format}", settings.fps=${fps}, settings.total_duration=${videoDuration}
+4. 각 씬의 duration 합계 = ${videoDuration}초 (씬 수와 개별 길이는 AI가 결정)
+5. 텍스트는 한국어
+6. 위 파일명만 정확히 사용 (존재하지 않는 파일명 사용 금지)
 
 JSON만 출력해주세요.`;
   };
@@ -713,24 +712,24 @@ JSON만 출력해주세요.`;
             <div className="card-glass p-5">
               <h2 className="text-base font-bold mb-3">설정</h2>
               <div className="space-y-4">
-                {/* 씬 시간 - 메인 설정 */}
+                {/* 영상 길이 */}
                 <div className="space-y-2">
-                  <label className="text-xs text-white/50">씬 1개 길이</label>
+                  <label className="text-xs text-white/50">영상 길이</label>
                   <div className="flex items-center gap-3">
                     <input
                       type="range"
                       min={5}
-                      max={20}
-                      step={1}
-                      value={sceneDuration}
-                      onChange={(e) => setSceneDuration(parseInt(e.target.value))}
+                      max={60}
+                      step={5}
+                      value={videoDuration}
+                      onChange={(e) => setVideoDuration(parseInt(e.target.value))}
                       className="flex-1 accent-ae-highlight h-2"
                     />
-                    <span className="text-lg font-bold text-ae-highlight w-14 text-right">{sceneDuration}초</span>
+                    <span className="text-lg font-bold text-ae-highlight w-14 text-right">{videoDuration}초</span>
                   </div>
                   <div className="flex justify-between text-[10px] text-white/30">
                     <span>5초</span>
-                    <span>20초</span>
+                    <span>60초</span>
                   </div>
                 </div>
 
@@ -765,8 +764,8 @@ JSON만 출력해주세요.`;
                 {/* 요약 */}
                 {images.length > 0 && (
                   <div className="bg-white/5 rounded-lg p-3 text-xs text-white/50">
-                    이미지 {images.length}장 × {sceneDuration}초 = <span className="text-ae-highlight font-bold">총 {images.length * sceneDuration}초</span> 영상
-                    <span className="text-white/30 ml-1">(효과 타이밍은 AI가 자동 결정)</span>
+                    이미지 {images.length}장으로 <span className="text-ae-highlight font-bold">{videoDuration}초</span> 영상 생성
+                    <span className="text-white/30 ml-1">(씬 구성, 연출, 타이밍 모두 AI가 결정)</span>
                   </div>
                 )}
               </div>
