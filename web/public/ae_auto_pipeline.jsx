@@ -14,6 +14,27 @@
  */
 
 // ============================================================
+// [0] 유틸리티 함수
+// ============================================================
+// 색상값을 안전한 [R,G,B] 배열로 변환 (0~1 범위)
+function safeColor(val, fallback) {
+    if (!fallback) fallback = [1, 1, 1];
+    if (!val) return fallback;
+    if (!(val instanceof Array)) return fallback;
+    if (val.length < 3) return fallback;
+    // 0~255 범위인 경우 0~1로 변환
+    var r = val[0], g = val[1], b = val[2];
+    if (r > 1 || g > 1 || b > 1) {
+        r = r / 255; g = g / 255; b = b / 255;
+    }
+    return [
+        Math.max(0, Math.min(1, r)),
+        Math.max(0, Math.min(1, g)),
+        Math.max(0, Math.min(1, b))
+    ];
+}
+
+// ============================================================
 // [1] JSON 파일 로드
 // ============================================================
 function loadJSON(filePath) {
@@ -64,7 +85,7 @@ function createProject(data) {
     );
     
     // 배경색 설정
-    var bg = settings.background_color || [0.85, 0.85, 0.85];
+    var bg = safeColor(settings.background_color, [0.85, 0.85, 0.85]);
     var bgSolid = comp.layers.addSolid(
         bg,
         "Background",
@@ -1013,6 +1034,7 @@ function processV2(comp, data, projectFolder) {
 
             // --- 텍스트 레이어 ---
             if (layerDef.type === "text" && layerDef.text_content) {
+              try {
                 var tc = layerDef.text_content;
                 aeLayer = comp.layers.addText(tc.text || "");
                 aeLayer.name = layerDef.name || layerDef.id || ("Text_" + si + "_" + li);
@@ -1048,7 +1070,7 @@ function processV2(comp, data, projectFolder) {
                     }
                 }
                 if (tc.color) {
-                    textDoc.fillColor = tc.color;
+                    textDoc.fillColor = safeColor(tc.color, [1, 1, 1]);
                 }
                 textDoc.justification = ParagraphJustification.CENTER_JUSTIFY;
                 if (tc.alignment === "left") textDoc.justification = ParagraphJustification.LEFT_JUSTIFY;
@@ -1057,11 +1079,14 @@ function processV2(comp, data, projectFolder) {
                 // 스트로크
                 if (tc.stroke && tc.stroke.enabled) {
                     textDoc.applyStroke = true;
-                    textDoc.strokeColor = tc.stroke.color || [0, 0, 0];
+                    textDoc.strokeColor = safeColor(tc.stroke.color, [0, 0, 0]);
                     textDoc.strokeWidth = tc.stroke.width || 3;
                 }
 
                 aeLayer.property("Source Text").setValue(textDoc);
+              } catch (textErr) {
+                errorLog.push("씬 " + (si+1) + " 텍스트 '" + (layerDef.name || layerDef.id) + "': " + textErr.toString());
+              }
             }
 
             // --- 도형 레이어 ---
@@ -1098,13 +1123,13 @@ function processV2(comp, data, projectFolder) {
 
                 // 스트로크
                 var stroke = shapeGroup.property("Contents").addProperty("ADBE Vector Graphic - Stroke");
-                stroke.property("Color").setValue(sc.color || [1, 0, 0]);
+                stroke.property("Color").setValue(safeColor(sc.color, [1, 0, 0]));
                 stroke.property("Stroke Width").setValue(sc.stroke_width || 4);
 
                 // 채우기
                 if (sc.fill) {
                     var fill = shapeGroup.property("Contents").addProperty("ADBE Vector Graphic - Fill");
-                    fill.property("Color").setValue(sc.color || [1, 0, 0]);
+                    fill.property("Color").setValue(safeColor(sc.color, [1, 0, 0]));
                 }
             }
 
