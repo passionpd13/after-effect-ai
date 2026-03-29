@@ -40,6 +40,19 @@ effects.params 값 범위:
   vignette.amount: 10 ~ 60
   light_sweep.angle: 0 ~ 360, light_sweep.speed: 0.5 ~ 3.0
 
+CC 고급 이펙트 params:
+  cc_particle_world: birth_rate(0.5~5), longevity(0.5~3), velocity(0~2), gravity(-0.5~0.5), particle_type(0~9)
+  cc_light_rays: intensity(50~200), radius(50~200), center([x,y])
+  cc_light_burst: intensity(20~100), ray_length(30~150), center([x,y])
+  cc_radial_blur: amount(10~80), blur_type(0=Spin,1=Zoom), center([x,y])
+  camera_lens_blur: blur_radius(5~30), blade_count(5~8)
+  lumetri_color: temperature(-50~50), exposure(-2~2), contrast(-100~100), saturation(0~200), vibrance(-100~100)
+  turbulent_displace: amount(10~100), size(5~50), complexity(1~5), animate_evolution(true/false), evolution_speed(50~200)
+  cc_glass: bump_height(5~50), displacement(20~100), softness(1~10)
+  cc_sphere: rotation_x(0~360), rotation_y(0~360), radius(100~500), auto_rotate(true/false), rotate_speed(10~60)
+  tint: map_black([r,g,b]), map_white([r,g,b]), amount(0~100)
+  gradient_ramp: start_color([r,g,b]), end_color([r,g,b]), blend(0=Linear,1=Radial)
+
 === 허용되는 enum 값 (이것만 사용!) ===
 
 type (레이어): "image" | "text" | "shape"
@@ -55,7 +68,8 @@ animation.intensity: "subtle" | "normal" | "strong"
 
 transition.type: "none" | "cut" | "fade" | "crossfade" | "morph" | "slide_left" | "slide_right" | "slide_up" | "slide_down" | "whip_pan" | "dissolve"
 
-effects.type: "drop_shadow" | "glow" | "blur" | "vignette" | "grain" | "light_sweep" | "lens_flare"
+effects.type (기본): "drop_shadow" | "glow" | "blur" | "vignette" | "grain" | "light_sweep" | "lens_flare"
+effects.type (CC 고급): "cc_particle_world" | "cc_light_rays" | "cc_light_burst" | "cc_radial_blur" | "cc_glass" | "camera_lens_blur" | "lumetri_color" | "turbulent_displace" | "cc_sphere" | "tint" | "gradient_ramp" | "radial_wipe"
 
 camera.type: "static" | "zoom_through" | "orbit" | "dolly" | "crane" | "parallax_scroll"
 
@@ -223,7 +237,17 @@ format: "vertical" | "horizontal" | "square"
 - 같은 이미지를 여러 씬에서 다른 position/scale로 재사용
 - 제공된 파일명만 사용 (존재하지 않는 파일명 생성 금지)
 - $schema, definitions, properties 등 스키마 키워드 포함 금지
-- JSON만 출력 (설명 텍스트 절대 포함 금지)`;
+- JSON만 출력 (설명 텍스트 절대 포함 금지)
+
+=== 고급 CC 이펙트 적극 활용 (고퀄리티!) ===
+- 임팩트 장면: cc_light_rays 또는 cc_light_burst로 빛줄기 효과
+- 배경 이미지: camera_lens_blur로 시네마틱 아웃포커스 + lumetri_color로 색보정
+- 전환 장면: cc_radial_blur(type=1=Zoom)로 속도감
+- 파티클: cc_particle_world로 불꽃/별/입자 효과 (별도 레이어에 적용)
+- 분위기: turbulent_displace(animate_evolution=true)로 물결/연기 효과
+- 색감: lumetri_color로 각 씬의 분위기에 맞는 색보정
+- tint로 흑백/세피아/듀오톤 효과
+- 매 씬에 최소 1개 이상의 CC 고급 이펙트 사용 권장!`;
 
 export async function POST(req: NextRequest) {
   try {

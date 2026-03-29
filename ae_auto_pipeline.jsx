@@ -550,6 +550,147 @@ function applyEffects(layer, effects, startTime) {
                     safeSetValue(flare.property("ADBE Lens Flare-0001"), Number(p.brightness || p.intensity || 100));
                     safeSetValue(flare.property("ADBE Lens Flare-0002"), Number(p.type || 2));
                     break;
+
+                // ── CC 고급 이펙트 ──
+
+                case "cc_particle_world":
+                    try {
+                        var pw = layer.Effects.addProperty("CC Particle World");
+                        // 기본 프리셋: p.preset = "fire"|"snow"|"rain"|"sparkle"|"explosion"|"bubbles"
+                        if (p.birth_rate) safeSetValue(pw.property("Birth Rate"), Number(p.birth_rate));
+                        if (p.longevity) safeSetValue(pw.property("Longevity (sec)"), Number(p.longevity));
+                        if (p.velocity) safeSetValue(pw.property("Velocity"), Number(p.velocity));
+                        if (p.gravity) safeSetValue(pw.property("Gravity"), Number(p.gravity));
+                        if (p.particle_type) safeSetValue(pw.property("Particle Type"), Number(p.particle_type));
+                        // Particle Type: 0=Line, 1=Triangle, 4=Lens Convex, 5=Faded Sphere, 6=Bubble, 9=Star
+                    } catch(e) {}
+                    break;
+
+                case "cc_light_rays":
+                    try {
+                        var lr = layer.Effects.addProperty("CC Light Rays");
+                        safeSetValue(lr.property("Intensity"), Number(p.intensity || 100));
+                        safeSetValue(lr.property("Radius"), Number(p.radius || 100));
+                        if (p.center) safeSetValue(lr.property("Center"), [Number(p.center[0] || 540), Number(p.center[1] || 400)]);
+                    } catch(e) {}
+                    break;
+
+                case "cc_light_burst":
+                    try {
+                        var lb = layer.Effects.addProperty("CC Light Burst 2.5");
+                        safeSetValue(lb.property("Intensity"), Number(p.intensity || 50));
+                        safeSetValue(lb.property("Ray Length"), Number(p.ray_length || 80));
+                        if (p.center) safeSetValue(lb.property("Center"), [Number(p.center[0] || 540), Number(p.center[1] || 960)]);
+                    } catch(e) {}
+                    break;
+
+                case "cc_radial_blur":
+                    try {
+                        var rb = layer.Effects.addProperty("CC Radial Blur");
+                        safeSetValue(rb.property("Amount"), Number(p.amount || 30));
+                        safeSetValue(rb.property("Type"), Number(p.blur_type || 0)); // 0=Spin, 1=Zoom
+                        if (p.center) safeSetValue(rb.property("Center"), [Number(p.center[0] || 540), Number(p.center[1] || 960)]);
+                    } catch(e) {}
+                    break;
+
+                case "cc_glass":
+                    try {
+                        var gl = layer.Effects.addProperty("CC Glass");
+                        safeSetValue(gl.property("Bump Height"), Number(p.bump_height || 20));
+                        safeSetValue(gl.property("Displacement"), Number(p.displacement || 50));
+                        safeSetValue(gl.property("Softness"), Number(p.softness || 3));
+                    } catch(e) {}
+                    break;
+
+                case "camera_lens_blur":
+                    try {
+                        var clb = layer.Effects.addProperty("ADBE Camera Lens Blur");
+                        safeSetValue(clb.property("ADBE Camera Lens Blur-0001"), Number(p.blur_radius || 15));
+                        // Iris: Blade Count
+                        if (p.blade_count) safeSetValue(clb.property("ADBE Camera Lens Blur-0008"), Number(p.blade_count));
+                    } catch(e) {}
+                    break;
+
+                case "lumetri_color":
+                    try {
+                        var lc = layer.Effects.addProperty("ADBE Lumetri");
+                        // Basic Correction
+                        if (p.temperature) safeSetValue(lc.property("ADBE Lumetri-0002"), Number(p.temperature));
+                        if (p.tint) safeSetValue(lc.property("ADBE Lumetri-0003"), Number(p.tint));
+                        if (p.exposure) safeSetValue(lc.property("ADBE Lumetri-0004"), Number(p.exposure));
+                        if (p.contrast) safeSetValue(lc.property("ADBE Lumetri-0005"), Number(p.contrast));
+                        if (p.highlights) safeSetValue(lc.property("ADBE Lumetri-0006"), Number(p.highlights));
+                        if (p.shadows) safeSetValue(lc.property("ADBE Lumetri-0007"), Number(p.shadows));
+                        if (p.saturation) safeSetValue(lc.property("ADBE Lumetri-0010"), Number(p.saturation));
+                        if (p.vibrance) safeSetValue(lc.property("ADBE Lumetri-0011"), Number(p.vibrance));
+                    } catch(e) {}
+                    break;
+
+                case "turbulent_displace":
+                    try {
+                        var td = layer.Effects.addProperty("ADBE Turbulent Displace");
+                        safeSetValue(td.property("ADBE Turbulent Displace-0001"), Number(p.amount || 50));
+                        safeSetValue(td.property("ADBE Turbulent Displace-0002"), Number(p.size || 10));
+                        safeSetValue(td.property("ADBE Turbulent Displace-0004"), Number(p.complexity || 2));
+                        // 진화(Evolution) 애니메이션
+                        if (p.animate_evolution) {
+                            try {
+                                td.property("ADBE Turbulent Displace-0006").expression = "time * " + Number(p.evolution_speed || 100);
+                            } catch(ex) {}
+                        }
+                    } catch(e) {}
+                    break;
+
+                case "cc_sphere":
+                    try {
+                        var sp = layer.Effects.addProperty("CC Sphere");
+                        safeSetValue(sp.property("Rotation Y"), Number(p.rotation_y || 0));
+                        safeSetValue(sp.property("Rotation X"), Number(p.rotation_x || 0));
+                        safeSetValue(sp.property("Radius"), Number(p.radius || 300));
+                        // 회전 애니메이션
+                        if (p.auto_rotate) {
+                            try {
+                                sp.property("Rotation Y").expression = "time * " + Number(p.rotate_speed || 30);
+                            } catch(ex) {}
+                        }
+                    } catch(e) {}
+                    break;
+
+                case "radial_wipe":
+                    try {
+                        // 원형으로 나타나는/사라지는 효과
+                        var rw = layer.Effects.addProperty("ADBE Radial Wipe");
+                        rw.property("ADBE Radial Wipe-0001").setValueAtTime(effectStart, Number(p.start_angle || 100));
+                        rw.property("ADBE Radial Wipe-0001").setValueAtTime(effectStart + Number(p.duration || 1), Number(p.end_angle || 0));
+                    } catch(e) {}
+                    break;
+
+                case "motion_tile":
+                    try {
+                        var mt = layer.Effects.addProperty("ADBE Tile");
+                        safeSetValue(mt.property("ADBE Tile-0001"), Number(p.tile_width || 200));
+                        safeSetValue(mt.property("ADBE Tile-0002"), Number(p.tile_height || 200));
+                        safeSetValue(mt.property("ADBE Tile-0007"), 1); // Mirror Edges
+                    } catch(e) {}
+                    break;
+
+                case "tint":
+                    try {
+                        var tintFx = layer.Effects.addProperty("ADBE Tint");
+                        if (p.map_black) safeSetValue(tintFx.property("ADBE Tint-0001"), safeColor(p.map_black, [0,0,0]));
+                        if (p.map_white) safeSetValue(tintFx.property("ADBE Tint-0002"), safeColor(p.map_white, [1,1,1]));
+                        safeSetValue(tintFx.property("ADBE Tint-0003"), Number(p.amount || 100));
+                    } catch(e) {}
+                    break;
+
+                case "gradient_ramp":
+                    try {
+                        var gr = layer.Effects.addProperty("ADBE Ramp");
+                        if (p.start_color) safeSetValue(gr.property("ADBE Ramp-0003"), safeColor(p.start_color, [0,0,0.2]));
+                        if (p.end_color) safeSetValue(gr.property("ADBE Ramp-0004"), safeColor(p.end_color, [0,0,0]));
+                        safeSetValue(gr.property("ADBE Ramp-0005"), Number(p.blend || 0)); // 0=Linear, 1=Radial
+                    } catch(e) {}
+                    break;
             }
         } catch(effectErr) {
             // 개별 이펙트 실패 시 무시하고 다음으로
@@ -1409,6 +1550,42 @@ function processV2(comp, data, projectFolder) {
 
         currentTime += sceneDur;
     }
+
+    // ── 글로벌 퀄리티 향상 ──
+    try {
+        // 모션 블러 활성화 (큰 퀄리티 차이!)
+        comp.motionBlur = true;
+        for (var mbi = 1; mbi <= comp.numLayers; mbi++) {
+            try { comp.layer(mbi).motionBlur = true; } catch(e) {}
+        }
+
+        // 글로벌 색보정 조정 레이어 (cinematic look)
+        if (data.project && data.project.style_preset) {
+            try {
+                var adjLayer = comp.layers.addSolid([0,0,0], "Color Grade", comp.width, comp.height, 1, comp.duration);
+                adjLayer.adjustmentLayer = true;
+                adjLayer.moveToBeginning();
+
+                var style = data.project.style_preset;
+                if (style === "cinematic" || style === "epic") {
+                    var lut = adjLayer.Effects.addProperty("ADBE Lumetri");
+                    safeSetValue(lut.property("ADBE Lumetri-0005"), 15); // contrast +15
+                    safeSetValue(lut.property("ADBE Lumetri-0010"), 110); // saturation +10%
+                    safeSetValue(lut.property("ADBE Lumetri-0006"), -10); // highlights -10
+                    safeSetValue(lut.property("ADBE Lumetri-0007"), 10); // shadows +10
+                } else if (style === "news" || style === "bold") {
+                    var lut2 = adjLayer.Effects.addProperty("ADBE Lumetri");
+                    safeSetValue(lut2.property("ADBE Lumetri-0005"), 25); // contrast +25
+                    safeSetValue(lut2.property("ADBE Lumetri-0010"), 120); // saturation +20%
+                } else if (style === "documentary") {
+                    var lut3 = adjLayer.Effects.addProperty("ADBE Lumetri");
+                    safeSetValue(lut3.property("ADBE Lumetri-0005"), 10); // contrast +10
+                    safeSetValue(lut3.property("ADBE Lumetri-0010"), 90); // saturation -10%
+                    safeSetValue(lut3.property("ADBE Lumetri-0002"), -5); // temperature cool
+                }
+            } catch(adjErr) {}
+        }
+    } catch(globalErr) {}
 
     // 씬 간 전환 처리
     currentTime = 0;
