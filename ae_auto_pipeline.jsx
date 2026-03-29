@@ -1147,13 +1147,33 @@ function processV2(comp, data, projectFolder) {
 
                 if (sc.shape_type === "rectangle" || sc.shape_type === "highlight_box") {
                     var rect = shapeGroup.property("Contents").addProperty("ADBE Vector Shape - Rect");
-                    var rectW = sc.width || (sc.size ? sc.size[0] : 200);
-                    var rectH = sc.height || (sc.size ? sc.size[1] : 100);
+                    // size가 배열 [w,h] 또는 객체 {width,height} 둘 다 처리
+                    var rectW = 200, rectH = 100;
+                    if (sc.width) rectW = Number(sc.width);
+                    if (sc.height) rectH = Number(sc.height);
+                    if (sc.size) {
+                        if (sc.size instanceof Array) {
+                            rectW = Number(sc.size[0]) || rectW;
+                            rectH = Number(sc.size[1]) || rectH;
+                        } else if (typeof sc.size === "object") {
+                            rectW = Number(sc.size.width) || rectW;
+                            rectH = Number(sc.size.height) || rectH;
+                        }
+                    }
                     safeSetValue(rect.property("Size"), [rectW, rectH]);
                 } else if (sc.shape_type === "circle") {
                     var ellipse = shapeGroup.property("Contents").addProperty("ADBE Vector Shape - Ellipse");
-                    var radius = sc.radius || 50;
-                    safeSetValue(ellipse.property("Size"), [radius * 2, radius * 2]);
+                    var radius = Number(sc.radius) || 50;
+                    // size가 있으면 그걸 사용
+                    var circleSize = radius * 2;
+                    if (sc.size) {
+                        if (sc.size instanceof Array) {
+                            circleSize = Number(sc.size[0]) || circleSize;
+                        } else if (typeof sc.size === "object") {
+                            circleSize = Number(sc.size.width) || circleSize;
+                        }
+                    }
+                    safeSetValue(ellipse.property("Size"), [circleSize, circleSize]);
                 } else {
                     // arrow, line, underline, connector → 패스로 그림
                     var pathGroup = shapeGroup.property("Contents").addProperty("ADBE Vector Shape - Group");
