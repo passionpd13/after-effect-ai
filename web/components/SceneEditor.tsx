@@ -19,8 +19,11 @@ import {
 interface SceneEditorProps {
   scene: Scene;
   isLast: boolean;
+  imageUrl?: string;
   onChange: (scene: Scene) => void;
   onDelete: () => void;
+  onImageUpload: (file: File) => void;
+  onImageRemove: () => void;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -43,7 +46,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-export default function SceneEditor({ scene, isLast, onChange, onDelete }: SceneEditorProps) {
+export default function SceneEditor({ scene, isLast, imageUrl, onChange, onDelete, onImageUpload, onImageRemove }: SceneEditorProps) {
   const update = (partial: Partial<Scene>) => {
     onChange({ ...scene, ...partial });
   };
@@ -101,8 +104,56 @@ export default function SceneEditor({ scene, isLast, onChange, onDelete }: Scene
 
       {/* Image */}
       <Section title="이미지">
+        {/* Upload Area */}
+        {imageUrl ? (
+          <div className="relative rounded-lg overflow-hidden border border-white/20 group">
+            <img
+              src={imageUrl}
+              alt={scene.image.file}
+              className="w-full h-40 object-cover"
+            />
+            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center gap-3">
+              <label className="cursor-pointer px-3 py-1.5 bg-white/20 rounded-lg text-xs hover:bg-white/30 transition-all">
+                변경
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) onImageUpload(file);
+                  }}
+                />
+              </label>
+              <button
+                onClick={onImageRemove}
+                className="px-3 py-1.5 bg-red-500/40 rounded-lg text-xs hover:bg-red-500/60 transition-all"
+              >
+                삭제
+              </button>
+            </div>
+            <div className="absolute bottom-2 left-2 bg-black/60 px-2 py-0.5 rounded text-[10px] text-white/70">
+              {scene.image.file}
+            </div>
+          </div>
+        ) : (
+          <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-white/20 rounded-lg cursor-pointer hover:border-ae-highlight/50 hover:bg-white/[0.02] transition-all">
+            <div className="text-4xl mb-2 opacity-40">🖼️</div>
+            <span className="text-sm text-white/40">클릭하여 이미지 업로드</span>
+            <span className="text-xs text-white/25 mt-1">PNG, JPG, WebP 지원</span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) onImageUpload(file);
+              }}
+            />
+          </label>
+        )}
         <div className="grid grid-cols-2 gap-3">
-          <Field label="파일명">
+          <Field label="파일명 (AE에서 사용)">
             <input
               className="input-field w-full"
               placeholder="image.png"
