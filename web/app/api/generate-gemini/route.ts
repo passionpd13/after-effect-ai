@@ -146,14 +146,14 @@ export async function POST(req: NextRequest) {
 
 스타일: ${style}
 포맷: ${fmt.label} (${fmt.w}x${fmt.h}), FPS: ${fpsVal}
-씬당 길이: 약 ${sDur}초, 총 약 ${dur}초
+전체 영상 길이: ${dur}초 (settings.total_duration = ${dur})
 ${description ? `설명: ${description}` : "이미지를 분석하여 자동으로 판단해주세요."}
 
 사용 가능한 파일:
 ${imageList}
 
 핵심 요구사항:
-1. 한 씬에 여러 이미지를 동시 배치 (이미지 1장 = 씬 1개 금지!)
+1. 이미지 1장 = 씬 1개 금지! 한 씬에 여러 이미지를 동시 배치. 씬 수는 자유롭게 (3~8개)
 2. 매 씬마다 화살표, 강조박스, 밑줄, 원 등 도형 shape 레이어 필수
 3. 다양한 레이아웃 (전체화면, 좌우분할, PIP, 격자, 대각선 등)
 4. 레이어마다 서로 다른 entrance 사용 (fade_in만 반복 금지)
@@ -161,7 +161,8 @@ ${imageList}
 6. 씬당 최소 5개 이상 레이어
 7. 위 파일명만 정확히 사용 (존재하지 않는 파일명 금지)
 8. settings: width=${fmt.w}, height=${fmt.h}, fps=${fpsVal}, total_duration=${dur}
-9. 텍스트는 한국어, 세부 타이밍은 자유롭게
+9. 모든 씬의 duration 합계 = ${dur}초 (씬 수와 개별 길이는 자유롭게)
+10. 텍스트는 한국어, 세부 타이밍은 자유롭게
 
 JSON만 출력.`,
     });
