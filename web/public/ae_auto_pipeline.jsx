@@ -899,6 +899,397 @@ function showValidationResult(result) {
 }
 
 // ============================================================
+// [V1 처리] 클래식 방식 (scene.image, scene.text, scene.animation)
+// ============================================================
+function processV1(comp, data, projectFolder) {
+    var currentTime = 0;
+    var layers = [];
+    var textLayers = [];
+
+    for (var i = 0; i < data.scenes.length; i++) {
+        var scene = data.scenes[i];
+
+        var imgLayer = importAndPlaceImage(comp, scene, currentTime, projectFolder);
+        if (imgLayer) {
+            layers.push(imgLayer);
+            if (scene.animation) applySceneAnimation(imgLayer, scene.animation, currentTime, scene.duration);
+            if (scene.effects) applyEffects(imgLayer, scene.effects, currentTime);
+        }
+
+        var txtLayer = createTextLayer(comp, scene, currentTime);
+        if (txtLayer) textLayers.push(txtLayer);
+
+        currentTime += scene.duration;
+    }
+
+    // 트랜지션
+    currentTime = 0;
+    for (var i = 0; i < data.scenes.length - 1; i++) {
+        var scene = data.scenes[i];
+        currentTime += scene.duration;
+        if (scene.transition_to_next && layers[i] && layers[i + 1]) {
+            var transStart = currentTime - (scene.transition_to_next.duration || 1);
+            applyTransition(comp, layers[i], layers[i + 1], scene.transition_to_next, transStart);
+        }
+    }
+}
+
+// ============================================================
+// [V2 처리] 멀티 레이어 방식 (scene.layers[])
+// ============================================================
+function processV2(comp, data, projectFolder) {
+    var currentTime = 0;
+    var sceneFirstLayers = []; // 각 씬의 첫 번째 이미지 레이어 (전환용)
+
+    for (var si = 0; si < data.scenes.length; si++) {
+        var scene = data.scenes[si];
+        var sceneDur = scene.duration || 4;
+        var firstImgLayer = null;
+
+        // 레이어를 역순으로 처리 (배열 마지막 = AE에서 맨 위)
+        for (var li = scene.layers.length - 1; li >= 0; li--) {
+            var layerDef = scene.layers[li];
+            if (layerDef.visible === false) continue;
+
+            var aeLayer = null;
+
+            // --- 이미지 레이어 ---
+            if (layerDef.type === "image" && layerDef.image_source && layerDef.image_source.file) {
+                var imgPath = new File(projectFolder + "/" + layerDef.image_source.file);
+                if (imgPath.exists) {
+                    try {
+                        var importOpts = new ImportOptions(imgPath);
+                        var footage = app.project.importFile(importOpts);
+                        aeLayer = comp.layers.add(footage);
+                        aeLayer.name = layerDef.name || layerDef.id || ("Layer_" + si + "_" + li);
+
+                        // 시간 설정
+                        aeLayer.startTime = currentTime;
+                        aeLayer.inPoint = currentTime;
+                        aeLayer.outPoint = currentTime + sceneDur;
+
+                        // fit_mode
+                        var fitMode = layerDef.image_source.fit_mode || "contain";
+                        var compW = comp.width;
+                        var compH = comp.height;
+                        var srcW = footage.width;
+                        var srcH = footage.height;
+                        if (srcW > 0 && srcH > 0) {
+                            var scaleX, scaleY;
+                            if (fitMode === "cover") {
+                                scaleX = scaleY = Math.max(compW / srcW, compH / srcH) * 100;
+                            } else if (fitMode === "stretch") {
+                                scaleX = (compW / srcW) * 100;
+                                scaleY = (compH / srcH) * 100;
+                            } else { // contain
+                                scaleX = scaleY = Math.min(compW / srcW, compH / srcH) * 100;
+                            }
+                            aeLayer.property("Scale").setValue([scaleX, scaleY]);
+                        }
+
+                        if (!firstImgLayer) firstImgLayer = aeLayer;
+                    } catch (e) {
+                        // 이미지 임포트 실패 - 무시
+                    }
+                }
+            }
+
+            // --- 텍스트 레이어 ---
+            if (layerDef.type === "text" && layerDef.text_content) {
+                var tc = layerDef.text_content;
+                aeLayer = comp.layers.addText(tc.text || "");
+                aeLayer.name = layerDef.name || layerDef.id || ("Text_" + si + "_" + li);
+                aeLayer.startTime = currentTime;
+                aeLayer.inPoint = currentTime;
+                aeLayer.outPoint = currentTime + sceneDur;
+
+                // 텍스트 스타일
+                var textDoc = aeLayer.property("Source Text").value;
+                textDoc.fontSize = tc.font_size || 60;
+                textDoc.font = (data.global_style && data.global_style.font_family) || "Noto Sans KR";
+                if (tc.font_weight === "bold" || tc.font_weight === "black") {
+                    textDoc.font = textDoc.font; // AE ExtendScript에서 bold는 별도 폰트명 필요
+                }
+                if (tc.color) {
+                    textDoc.fillColor = tc.color;
+                }
+                textDoc.justification = ParagraphJustification.CENTER_JUSTIFY;
+                if (tc.alignment === "left") textDoc.justification = ParagraphJustification.LEFT_JUSTIFY;
+                if (tc.alignment === "right") textDoc.justification = ParagraphJustification.RIGHT_JUSTIFY;
+
+                // 스트로크
+                if (tc.stroke && tc.stroke.enabled) {
+                    textDoc.applyStroke = true;
+                    textDoc.strokeColor = tc.stroke.color || [0, 0, 0];
+                    textDoc.strokeWidth = tc.stroke.width || 3;
+                }
+
+                aeLayer.property("Source Text").setValue(textDoc);
+            }
+
+            // --- 도형 레이어 ---
+            if (layerDef.type === "shape" && layerDef.shape_content) {
+                aeLayer = comp.layers.addShape();
+                aeLayer.name = layerDef.name || layerDef.id || ("Shape_" + si + "_" + li);
+                aeLayer.startTime = currentTime;
+                aeLayer.inPoint = currentTime;
+                aeLayer.outPoint = currentTime + sceneDur;
+
+                var shapeGroup = aeLayer.property("Contents").addProperty("ADBE Vector Group");
+                var sc = layerDef.shape_content;
+
+                if (sc.shape_type === "rectangle" || sc.shape_type === "highlight_box") {
+                    var rect = shapeGroup.property("Contents").addProperty("ADBE Vector Shape - Rect");
+                    if (sc.size) {
+                        rect.property("Size").setValue(sc.size);
+                    }
+                } else if (sc.shape_type === "circle") {
+                    var ellipse = shapeGroup.property("Contents").addProperty("ADBE Vector Shape - Ellipse");
+                    if (sc.size) {
+                        ellipse.property("Size").setValue(sc.size);
+                    }
+                } else {
+                    // arrow, line, underline, connector, bracket → 패스로 그림
+                    var pathGroup = shapeGroup.property("Contents").addProperty("ADBE Vector Shape - Group");
+                    var sp = sc.start_point || { x: 0, y: 0 };
+                    var ep = sc.end_point || { x: 100, y: 0 };
+                    var shapePath = new Shape();
+                    shapePath.vertices = [[sp.x, sp.y], [ep.x, ep.y]];
+                    shapePath.closed = false;
+                    pathGroup.property("Path").setValue(shapePath);
+                }
+
+                // 스트로크
+                var stroke = shapeGroup.property("Contents").addProperty("ADBE Vector Graphic - Stroke");
+                stroke.property("Color").setValue(sc.color || [1, 0, 0]);
+                stroke.property("Stroke Width").setValue(sc.stroke_width || 4);
+
+                // 채우기
+                if (sc.fill) {
+                    var fill = shapeGroup.property("Contents").addProperty("ADBE Vector Graphic - Fill");
+                    fill.property("Color").setValue(sc.color || [1, 0, 0]);
+                }
+            }
+
+            // --- 공통: Transform 적용 ---
+            if (aeLayer && layerDef.transform) {
+                var t = layerDef.transform;
+                if (t.position) {
+                    aeLayer.property("Position").setValue([t.position.x || 540, t.position.y || 960]);
+                }
+                if (t.scale) {
+                    aeLayer.property("Scale").setValue(t.scale);
+                }
+                if (t.opacity !== undefined && t.opacity !== null) {
+                    aeLayer.property("Opacity").setValue(t.opacity);
+                }
+                if (t.rotation) {
+                    aeLayer.property("Rotation").setValue(t.rotation);
+                }
+            }
+
+            // --- 3D 레이어 ---
+            if (aeLayer && layerDef.three_d) {
+                aeLayer.threeDLayer = true;
+                if (layerDef.transform && layerDef.transform.z_position) {
+                    var pos3d = aeLayer.property("Position").value;
+                    aeLayer.property("Position").setValue([pos3d[0], pos3d[1], layerDef.transform.z_position]);
+                }
+            }
+
+            // --- Entrance 애니메이션 ---
+            if (aeLayer && layerDef.entrance && layerDef.entrance.type !== "none") {
+                var ent = layerDef.entrance;
+                var entDelay = ent.delay || 0;
+                var entDur = ent.duration || 0.8;
+                var entStart = currentTime + entDelay;
+                var entEnd = entStart + entDur;
+
+                var entType = ent.type || "fade_in";
+
+                // 먼저 시작 시점까지 숨기기
+                if (entDelay > 0) {
+                    aeLayer.property("Opacity").setValueAtTime(currentTime, 0);
+                    aeLayer.property("Opacity").setValueAtTime(entStart, 0);
+                }
+
+                if (entType === "fade_in") {
+                    aeLayer.property("Opacity").setValueAtTime(entStart, 0);
+                    aeLayer.property("Opacity").setValueAtTime(entEnd, layerDef.transform ? (layerDef.transform.opacity || 100) : 100);
+                } else if (entType === "scale_up" || entType === "pop") {
+                    var targetScale = (layerDef.transform && layerDef.transform.scale) || [100, 100];
+                    aeLayer.property("Scale").setValueAtTime(entStart, [0, 0]);
+                    aeLayer.property("Scale").setValueAtTime(entEnd, targetScale);
+                    if (entDelay > 0) {
+                        aeLayer.property("Opacity").setValueAtTime(entStart, 0);
+                        aeLayer.property("Opacity").setValueAtTime(entStart + 0.05, 100);
+                    }
+                } else if (entType === "slide_from_left") {
+                    var origPos = aeLayer.property("Position").value;
+                    aeLayer.property("Position").setValueAtTime(entStart, [origPos[0] - comp.width, origPos[1]]);
+                    aeLayer.property("Position").setValueAtTime(entEnd, origPos);
+                    aeLayer.property("Opacity").setValueAtTime(entStart, 0);
+                    aeLayer.property("Opacity").setValueAtTime(entStart + 0.1, 100);
+                } else if (entType === "slide_from_right") {
+                    var origPos = aeLayer.property("Position").value;
+                    aeLayer.property("Position").setValueAtTime(entStart, [origPos[0] + comp.width, origPos[1]]);
+                    aeLayer.property("Position").setValueAtTime(entEnd, origPos);
+                    aeLayer.property("Opacity").setValueAtTime(entStart, 0);
+                    aeLayer.property("Opacity").setValueAtTime(entStart + 0.1, 100);
+                } else if (entType === "slide_from_bottom") {
+                    var origPos = aeLayer.property("Position").value;
+                    aeLayer.property("Position").setValueAtTime(entStart, [origPos[0], origPos[1] + comp.height * 0.5]);
+                    aeLayer.property("Position").setValueAtTime(entEnd, origPos);
+                    aeLayer.property("Opacity").setValueAtTime(entStart, 0);
+                    aeLayer.property("Opacity").setValueAtTime(entStart + 0.1, 100);
+                } else if (entType === "slide_from_top") {
+                    var origPos = aeLayer.property("Position").value;
+                    aeLayer.property("Position").setValueAtTime(entStart, [origPos[0], origPos[1] - comp.height * 0.5]);
+                    aeLayer.property("Position").setValueAtTime(entEnd, origPos);
+                    aeLayer.property("Opacity").setValueAtTime(entStart, 0);
+                    aeLayer.property("Opacity").setValueAtTime(entStart + 0.1, 100);
+                } else if (entType === "typewriter" || entType === "letter_by_letter" || entType === "word_by_word") {
+                    // 타이프라이터: 페이드인으로 대체 (ExtendScript 한계)
+                    aeLayer.property("Opacity").setValueAtTime(entStart, 0);
+                    aeLayer.property("Opacity").setValueAtTime(entEnd, 100);
+                } else if (entType === "wipe_in") {
+                    aeLayer.property("Opacity").setValueAtTime(entStart, 0);
+                    aeLayer.property("Opacity").setValueAtTime(entEnd, 100);
+                } else if (entType === "bounce_in") {
+                    var targetScale = (layerDef.transform && layerDef.transform.scale) || [100, 100];
+                    aeLayer.property("Scale").setValueAtTime(entStart, [0, 0]);
+                    aeLayer.property("Scale").setValueAtTime(entEnd * 0.7, [targetScale[0] * 1.2, targetScale[1] * 1.2]);
+                    aeLayer.property("Scale").setValueAtTime(entEnd, targetScale);
+                } else if (entType === "fly_in_3d" || entType === "flip_in" || entType === "spin_in") {
+                    // 3D 등장 → scale_up + fade_in 조합
+                    var targetScale = (layerDef.transform && layerDef.transform.scale) || [100, 100];
+                    aeLayer.property("Scale").setValueAtTime(entStart, [targetScale[0] * 0.3, targetScale[1] * 0.3]);
+                    aeLayer.property("Scale").setValueAtTime(entEnd, targetScale);
+                    aeLayer.property("Opacity").setValueAtTime(entStart, 0);
+                    aeLayer.property("Opacity").setValueAtTime(entEnd, 100);
+                } else {
+                    // 기본: fade_in
+                    aeLayer.property("Opacity").setValueAtTime(entStart, 0);
+                    aeLayer.property("Opacity").setValueAtTime(entEnd, 100);
+                }
+            }
+
+            // --- 지속 애니메이션 ---
+            if (aeLayer && layerDef.animation && layerDef.animation.type !== "none") {
+                var anim = layerDef.animation;
+                var animType = anim.type;
+                var intensity = anim.intensity || "normal";
+                var intensityMap = { subtle: 0.1, normal: 0.2, strong: 0.4 };
+                var mult = intensityMap[intensity] || 0.2;
+                var animStart = currentTime;
+                var animEnd = currentTime + sceneDur;
+
+                if (animType === "float" || animType === "bob" || animType === "breathe" || animType === "sway" || animType === "subtle_sway") {
+                    // Expression 기반 부드러운 움직임
+                    var freq = (anim.speed || 1) * 2;
+                    var ampY = 10 * (mult / 0.2);
+                    try {
+                        aeLayer.property("Position").expression =
+                            "var p = value; [p[0], p[1] + Math.sin(time * " + freq + ") * " + ampY + "]";
+                    } catch(ex) {
+                        // expression 실패시 키프레임으로 대체
+                        var pos = aeLayer.property("Position").value;
+                        aeLayer.property("Position").setValueAtTime(animStart, pos);
+                        aeLayer.property("Position").setValueAtTime((animStart + animEnd) / 2, [pos[0], pos[1] - ampY]);
+                        aeLayer.property("Position").setValueAtTime(animEnd, pos);
+                    }
+                } else if (animType === "pulse") {
+                    var sc = aeLayer.property("Scale").value;
+                    var pulseAmt = 5 * (mult / 0.2);
+                    try {
+                        aeLayer.property("Scale").expression =
+                            "var s = value; var p = Math.sin(time * 3) * " + pulseAmt + "; [s[0]+p, s[1]+p]";
+                    } catch(ex) {}
+                } else if (animType === "shake") {
+                    var shakeAmt = 5 * (mult / 0.2);
+                    try {
+                        aeLayer.property("Position").expression =
+                            "var p = value; [p[0] + wiggle(8," + shakeAmt + ")[0] - p[0], p[1] + wiggle(8," + shakeAmt + ")[1] - p[1]]";
+                    } catch(ex) {}
+                } else if (animType === "rotate_slow") {
+                    aeLayer.property("Rotation").setValueAtTime(animStart, 0);
+                    aeLayer.property("Rotation").setValueAtTime(animEnd, 360 * mult);
+                } else if (animType === "zoom_in") {
+                    var sc = aeLayer.property("Scale").value;
+                    aeLayer.property("Scale").setValueAtTime(animStart, sc);
+                    aeLayer.property("Scale").setValueAtTime(animEnd, [sc[0] * (1 + mult), sc[1] * (1 + mult)]);
+                } else if (animType === "zoom_out") {
+                    var sc = aeLayer.property("Scale").value;
+                    aeLayer.property("Scale").setValueAtTime(animStart, sc);
+                    aeLayer.property("Scale").setValueAtTime(animEnd, [sc[0] * (1 - mult), sc[1] * (1 - mult)]);
+                } else if (animType === "ken_burns") {
+                    var sc = aeLayer.property("Scale").value;
+                    var pos = aeLayer.property("Position").value;
+                    aeLayer.property("Scale").setValueAtTime(animStart, sc);
+                    aeLayer.property("Scale").setValueAtTime(animEnd, [sc[0] * (1 + mult), sc[1] * (1 + mult)]);
+                    aeLayer.property("Position").setValueAtTime(animStart, pos);
+                    aeLayer.property("Position").setValueAtTime(animEnd, [pos[0] + comp.width * mult * 0.1, pos[1]]);
+                } else if (animType === "pan_left" || animType === "pan_right" || animType === "pan_up" || animType === "pan_down") {
+                    var pos = aeLayer.property("Position").value;
+                    var panDist = comp.width * mult * 0.3;
+                    var dx = 0, dy = 0;
+                    if (animType === "pan_left") dx = -panDist;
+                    if (animType === "pan_right") dx = panDist;
+                    if (animType === "pan_up") dy = -panDist;
+                    if (animType === "pan_down") dy = panDist;
+                    aeLayer.property("Position").setValueAtTime(animStart, pos);
+                    aeLayer.property("Position").setValueAtTime(animEnd, [pos[0] + dx, pos[1] + dy]);
+                }
+            }
+
+            // --- Exit 애니메이션 ---
+            if (aeLayer && layerDef.exit && layerDef.exit.type !== "none") {
+                var ex = layerDef.exit;
+                var exitDur = ex.duration || 0.5;
+                var exitBefore = ex.time_before_end || 0.5;
+                var exitStart = currentTime + sceneDur - exitBefore - exitDur;
+                var exitEnd = currentTime + sceneDur - exitBefore;
+
+                if (ex.type === "fade_out") {
+                    aeLayer.property("Opacity").setValueAtTime(exitStart, 100);
+                    aeLayer.property("Opacity").setValueAtTime(exitEnd, 0);
+                } else if (ex.type === "scale_down") {
+                    var sc = aeLayer.property("Scale").value;
+                    aeLayer.property("Scale").setValueAtTime(exitStart, sc);
+                    aeLayer.property("Scale").setValueAtTime(exitEnd, [0, 0]);
+                } else if (ex.type === "slide_to_left" || ex.type === "slide_to_right") {
+                    var pos = aeLayer.property("Position").value;
+                    var offX = ex.type === "slide_to_left" ? -comp.width : comp.width;
+                    aeLayer.property("Position").setValueAtTime(exitStart, pos);
+                    aeLayer.property("Position").setValueAtTime(exitEnd, [pos[0] + offX, pos[1]]);
+                }
+            }
+
+            // --- 이펙트 ---
+            if (aeLayer && layerDef.effects) {
+                applyEffects(aeLayer, layerDef.effects, currentTime);
+            }
+        }
+
+        // 씬의 첫 번째 이미지 레이어 저장 (전환용)
+        sceneFirstLayers.push(firstImgLayer);
+
+        currentTime += sceneDur;
+    }
+
+    // 씬 간 전환 처리
+    currentTime = 0;
+    for (var i = 0; i < data.scenes.length - 1; i++) {
+        currentTime += data.scenes[i].duration;
+        var trans = data.scenes[i].transition_to_next;
+        if (trans && sceneFirstLayers[i] && sceneFirstLayers[i + 1]) {
+            var transStart = currentTime - (trans.duration || 1);
+            applyTransition(comp, sceneFirstLayers[i], sceneFirstLayers[i + 1], trans, transStart);
+        }
+    }
+}
+
+// ============================================================
 // [MAIN] 메인 실행 함수
 // ============================================================
 function main() {
@@ -918,67 +1309,30 @@ function main() {
 
     // 언두 그룹 시작
     app.beginUndoGroup("AE Auto Pipeline");
-    
+
     try {
+        // v1 vs v2 감지: v2는 scenes[].layers 배열이 있음
+        var isV2 = data.scenes[0] && data.scenes[0].layers && data.scenes[0].layers.length > 0;
+
         // 1. 프로젝트 생성
         var comp = createProject(data);
-        
-        // 2. 장면별 처리
-        var currentTime = 0;
-        var layers = [];
-        var textLayers = [];
-        
-        for (var i = 0; i < data.scenes.length; i++) {
-            var scene = data.scenes[i];
-            
-            // 이미지 배치
-            var imgLayer = importAndPlaceImage(comp, scene, currentTime, projectFolder);
-            if (imgLayer) {
-                layers.push(imgLayer);
-                
-                // 장면 애니메이션 적용
-                applySceneAnimation(imgLayer, scene.animation, currentTime, scene.duration);
-                
-                // 이펙트 적용
-                applyEffects(imgLayer, scene.effects, currentTime);
-            }
-            
-            // 텍스트 배치
-            var txtLayer = createTextLayer(comp, scene, currentTime);
-            if (txtLayer) {
-                textLayers.push(txtLayer);
-            }
-            
-            // 다음 시간으로 이동 (전환 시간은 겹침)
-            var transitionDur = 0;
-            if (scene.transition_to_next) {
-                transitionDur = scene.transition_to_next.duration || 0;
-            }
-            
-            currentTime += scene.duration;
+
+        if (isV2) {
+            processV2(comp, data, projectFolder);
+        } else {
+            processV1(comp, data, projectFolder);
         }
-        
-        // 3. 트랜지션 적용 (장면 사이)
-        currentTime = 0;
-        for (var i = 0; i < data.scenes.length - 1; i++) {
-            var scene = data.scenes[i];
-            currentTime += scene.duration;
-            
-            if (scene.transition_to_next && layers[i] && layers[i + 1]) {
-                var transStart = currentTime - (scene.transition_to_next.duration || 1);
-                applyTransition(comp, layers[i], layers[i + 1], scene.transition_to_next, transStart);
-            }
-        }
-        
-        // 4. 오디오 처리
+
+        // 오디오 처리
         handleAudio(comp, data, projectFolder);
-        
-        // 5. 렌더 큐에 추가
+
+        // 렌더 큐에 추가
         if (data.render) {
             addToRenderQueue(comp, data.render);
         }
-        
+
         alert("영상 생성 완료!\n\n" +
+              "모드: " + (isV2 ? "v2 (멀티 레이어)" : "v1 (클래식)") + "\n" +
               "장면 수: " + data.scenes.length + "\n" +
               "총 길이: " + comp.duration + "초\n" +
               "해상도: " + comp.width + "x" + comp.height + "\n\n" +
