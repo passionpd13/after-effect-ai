@@ -1,0 +1,295 @@
+{
+  "project": {
+    "name": "korean_architecture",
+    "description": "한국 전통 건축의 아름다움을 소개하는 다큐멘터리 스타일 쇼츠 영상",
+    "created_by": "claude_analysis",
+    "version": "1.0"
+  },
+  "settings": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "format": "vertical",
+    "background_color": [0.1, 0.1, 0.12],
+    "total_duration": 22
+  },
+  "global_style": {
+    "font_family": "Noto Sans KR",
+    "title_font_size": 55,
+    "subtitle_font_size": 38,
+    "text_color": [1, 1, 1],
+    "text_stroke": {
+      "enabled": true,
+      "color": [0, 0, 0],
+      "width": 3
+    },
+    "color_theme": "warm"
+  },
+  "scenes": [
+    {
+      "id": 1,
+      "type": "image",
+      "duration": 5,
+      "image": {
+        "file": "gyeongbokgung_main.png",
+        "fit_mode": "cover",
+        "position": { "x": "center", "y": "center" },
+        "shadow": {
+          "enabled": true,
+          "color": [0, 0, 0],
+          "opacity": 0.6,
+          "distance": 12,
+          "softness": 20
+        }
+      },
+      "text": {
+        "content": "경복궁 근정전",
+        "position": "top",
+        "animation": "fade_in",
+        "delay": 0.5
+      },
+      "animation": {
+        "type": "zoom_in",
+        "intensity": "subtle",
+        "easing": "ease_in_out"
+      },
+      "effects": [
+        {
+          "type": "vignette",
+          "params": { "amount": 35 },
+          "start_time": 0
+        },
+        {
+          "type": "color_correction",
+          "params": { "brightness": 1.1, "contrast": 1.15, "saturation": 1.2 },
+          "start_time": 0
+        }
+      ],
+      "transition_to_next": {
+        "type": "crossfade",
+        "duration": 1.5,
+        "easing": "ease_in_out"
+      },
+      "audio": {
+        "sfx": "",
+        "sfx_volume": 1.0,
+        "narration": "조선의 법궁, 경복궁. 600년 역사를 품은 이곳에서 한국 전통 건축의 아름다움을 만나봅니다."
+      }
+    },
+    {
+      "id": 2,
+      "type": "image",
+      "duration": 4,
+      "image": {
+        "file": "dancheong_closeup.png",
+        "fit_mode": "cover",
+        "position": { "x": "center", "y": "center" },
+        "shadow": {
+          "enabled": false,
+          "color": [0, 0, 0],
+          "opacity": 0.5,
+          "distance": 10,
+          "softness": 15
+        }
+      },
+      "text": {
+        "content": "화려한 단청",
+        "position": "bottom",
+        "animation": "slide_up",
+        "delay": 0.3
+      },
+      "animation": {
+        "type": "ken_burns",
+        "intensity": "normal",
+        "easing": "ease_in_out"
+      },
+      "effects": [
+        {
+          "type": "glow",
+          "params": { "radius": 10, "intensity": 0.5 },
+          "start_time": 0
+        },
+        {
+          "type": "light_sweep",
+          "params": { "angle": 45, "width": 120, "speed": 1.5 },
+          "start_time": 1,
+          "end_time": 3
+        }
+      ],
+      "transition_to_next": {
+        "type": "morph",
+        "duration": 1.5,
+        "easing": "ease_in_out"
+      },
+      "audio": {
+        "sfx": "",
+        "sfx_volume": 1.0,
+        "narration": "오방색으로 칠해진 단청은 건물의 격식을 나타내며, 목재를 보호하는 실용적 역할도 합니다."
+      }
+    },
+    {
+      "id": 3,
+      "type": "image",
+      "duration": 4.5,
+      "image": {
+        "file": "cheoma_curve.png",
+        "fit_mode": "contain",
+        "position": { "x": "center", "y": "center" },
+        "shadow": {
+          "enabled": true,
+          "color": [0, 0, 0],
+          "opacity": 0.7,
+          "distance": 15,
+          "softness": 25
+        }
+      },
+      "text": {
+        "content": "하늘을 향한 처마",
+        "position": "center",
+        "animation": "type_writer",
+        "delay": 0.2
+      },
+      "animation": {
+        "type": "pan_up",
+        "intensity": "normal",
+        "easing": "ease_in_out"
+      },
+      "effects": [
+        {
+          "type": "drop_shadow",
+          "params": { "opacity": 0.6, "direction": 135, "distance": 20, "softness": 15 },
+          "start_time": 0
+        },
+        {
+          "type": "grain",
+          "params": { "amount": 0.3 },
+          "start_time": 0
+        }
+      ],
+      "transition_to_next": {
+        "type": "slide_up",
+        "duration": 1,
+        "easing": "ease_in_out"
+      },
+      "audio": {
+        "sfx": "",
+        "sfx_volume": 1.0,
+        "narration": "하늘을 향해 부드럽게 휘어 오르는 처마 곡선은 한국 건축만의 독특한 아름다움입니다."
+      }
+    },
+    {
+      "id": 4,
+      "type": "image",
+      "duration": 4.5,
+      "image": {
+        "file": "garden_pavilion.png",
+        "fit_mode": "cover",
+        "position": { "x": "center", "y": "center" },
+        "shadow": {
+          "enabled": false,
+          "color": [0, 0, 0],
+          "opacity": 0.5,
+          "distance": 10,
+          "softness": 15
+        }
+      },
+      "text": {
+        "content": "자연과의 조화",
+        "position": "top",
+        "animation": "fade_in",
+        "delay": 0.5
+      },
+      "animation": {
+        "type": "float",
+        "intensity": "subtle",
+        "easing": "ease_in_out"
+      },
+      "effects": [
+        {
+          "type": "blur",
+          "params": { "amount": 2 },
+          "start_time": 0,
+          "end_time": 0.5
+        },
+        {
+          "type": "vignette",
+          "params": { "amount": 40 },
+          "start_time": 0
+        }
+      ],
+      "transition_to_next": {
+        "type": "dissolve",
+        "duration": 1.5,
+        "easing": "ease_out"
+      },
+      "audio": {
+        "sfx": "",
+        "sfx_volume": 1.0,
+        "narration": "한국 전통 정원은 자연을 거스르지 않고 자연 속에 녹아드는 것을 최고의 아름다움으로 여겼습니다."
+      }
+    },
+    {
+      "id": 5,
+      "type": "image",
+      "duration": 4,
+      "image": {
+        "file": "sunset_palace.png",
+        "fit_mode": "cover",
+        "position": { "x": "center", "y": "center" },
+        "shadow": {
+          "enabled": true,
+          "color": [0, 0, 0],
+          "opacity": 0.5,
+          "distance": 10,
+          "softness": 15
+        }
+      },
+      "text": {
+        "content": "영원한 아름다움",
+        "position": "center",
+        "animation": "bounce",
+        "delay": 0
+      },
+      "animation": {
+        "type": "zoom_out",
+        "intensity": "strong",
+        "easing": "ease_out"
+      },
+      "effects": [
+        {
+          "type": "lens_flare",
+          "params": { "intensity": 0.8, "position": [0.7, 0.3] },
+          "start_time": 0,
+          "end_time": 2
+        },
+        {
+          "type": "glow",
+          "params": { "radius": 15, "intensity": 0.6 },
+          "start_time": 0
+        }
+      ],
+      "transition_to_next": {
+        "type": "fade",
+        "duration": 2,
+        "easing": "ease_out"
+      },
+      "audio": {
+        "sfx": "",
+        "sfx_volume": 1.0,
+        "narration": "600년의 시간을 넘어, 한국 전통 건축의 아름다움은 오늘도 우리 곁에 숨 쉬고 있습니다."
+      }
+    }
+  ],
+  "audio_global": {
+    "bgm": "korean_traditional_ambient.mp3",
+    "bgm_volume": 0.25,
+    "bgm_fade_in": 2,
+    "bgm_fade_out": 3
+  },
+  "render": {
+    "output_format": "mp4",
+    "codec": "h264",
+    "quality": "high",
+    "output_filename": "korean_architecture_beauty.mp4"
+  }
+}
