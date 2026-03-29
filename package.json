@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "install": "cd web && npm install",
-    "build": "cd web && npm run build && cp -r .next/static .next/standalone/.next/static && cp -r public .next/standalone/public",
-    "start": "HOSTNAME=0.0.0.0 PORT=${PORT:-3000} node web/.next/standalone/server.js"
+    "build": "cd web && npm run build",
+    "start": "cd web && npx next start -H 0.0.0.0 -p ${PORT:-3000}"
   }
 }
