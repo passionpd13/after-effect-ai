@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ae-dark: #1a1a2e;
+  --ae-darker: #16213e;
+  --ae-accent: #0f3460;
+  --ae-highlight: #e94560;
+}
+
+body {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  min-height: 100vh;
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-ae-highlight via-ae-purple to-ae-blue;
+  }
+  .card-glass {
+    @apply bg-white/5 backdrop-blur-md border border-white/10 rounded-xl;
+  }
+  .btn-primary {
+    @apply bg-ae-highlight hover:bg-ae-highlight/80 text-white font-medium px-6 py-3 rounded-lg transition-all duration-200 hover:scale-105;
+  }
+  .btn-secondary {
+    @apply bg-white/10 hover:bg-white/20 text-white font-medium px-6 py-3 rounded-lg border border-white/20 transition-all duration-200;
+  }
+  .input-field {
+    @apply bg-white/5 border border-white/20 rounded-lg px-4 py-2.5 text-white placeholder-white/40 focus:outline-none focus:border-ae-highlight focus:ring-1 focus:ring-ae-highlight transition-all;
+  }
+  .select-field {
+    @apply bg-white/5 border border-white/20 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-ae-highlight transition-all appearance-none cursor-pointer;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(255,255,255,0.05);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.2);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.3);
+}
+
+/* JSON syntax highlighting */
+.json-key { color: #e94560; }
+.json-string { color: #3498db; }
+.json-number { color: #f39c12; }
+.json-boolean { color: #9b59b6; }
+.json-null { color: #95a5a6; }
