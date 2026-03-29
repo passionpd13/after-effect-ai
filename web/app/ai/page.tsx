@@ -6,7 +6,12 @@ interface UploadedImage {
   file: File;
   dataUrl: string;
   name: string;
+  cutoutDataUrl?: string;
+  cutoutName?: string;
+  isProcessing?: boolean;
 }
+
+type Mode = "manual" | "auto";
 
 export default function AiModePage() {
   const [images, setImages] = useState<UploadedImage[]>([]);
@@ -15,6 +20,16 @@ export default function AiModePage() {
   const [generatedJson, setGeneratedJson] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [copyPromptDone, setCopyPromptDone] = useState(false);
+  const [error, setError] = useState("");
+
+  // API Keys (선택적)
+  const [anthropicKey, setAnthropicKey] = useState("");
+  const [removeBgKey, setRemoveBgKey] = useState("");
+  const [showApiSettings, setShowApiSettings] = useState(false);
+  const [mode, setMode] = useState<Mode>("manual");
+
+  // 배경 제거 진행률
+  const [bgRemoveProgress, setBgRemoveProgress] = useState({ done: 0, total: 0 });
 
   const handleImageUpload = useCallback((files: FileList | null) => {
     if (!files) return;
@@ -26,99 +41,171 @@ export default function AiModePage() {
         new Promise((resolve) => {
           const reader = new FileReader();
           reader.onload = (e) => {
-            resolve({
-              file,
-              dataUrl: e.target?.result as string,
-              name: file.name,
-            });
+            resolve({ file, dataUrl: e.target?.result as string, name: file.name });
           };
           reader.readAsDataURL(file);
         })
       );
     }
-    Promise.all(newImages).then((imgs) => {
-      setImages((prev) => [...prev, ...imgs]);
-    });
+    Promise.all(newImages).then((imgs) => setImages((prev) => [...prev, ...imgs]));
   }, []);
 
   const removeImage = (index: number) => {
     setImages((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // ── 배경 제거 (remove.bg API) ──
+  const handleRemoveBg = async () => {
+    if (!removeBgKey) {
+      setError("remove.bg API 키를 입력해주세요");
+      return;
+    }
+    setBgRemoveProgress({ done: 0, total: images.length });
+    setError("");
+
+    const updated = [...images];
+    for (let i = 0; i < updated.length; i++) {
+      updated[i] = { ...updated[i], isProcessing: true };
+      setImages([...updated]);
+
+      try {
+        const formData = new FormData();
+        formData.append("image", updated[i].file);
+        formData.append("api_key", removeBgKey);
+
+        const res = await fetch("/api/remove-bg", { method: "POST", body: formData });
+        const data = await res.json();
+
+        if (data.success) {
+          updated[i] = {
+            ...updated[i],
+            cutoutDataUrl: data.image_base64,
+            cutoutName: data.cutout_name,
+            isProcessing: false,
+          };
+        } else {
+          updated[i] = { ...updated[i], isProcessing: false };
+          setError(`${updated[i].name}: ${data.error}`);
+        }
+      } catch (e) {
+        updated[i] = { ...updated[i], isProcessing: false };
+        setError(`${updated[i].name}: 처리 실패`);
+      }
+
+      setBgRemoveProgress({ done: i + 1, total: images.length });
+      setImages([...updated]);
+    }
+  };
+
+  // ── AI 자동 생성 (Anthropic API) ──
+  const handleAutoGenerate = async () => {
+    if (!anthropicKey) {
+      setError("Anthropic API 키를 입력해주세요");
+      return;
+    }
+    setIsGenerating(true);
+    setError("");
+
+    // 모든 이미지 (원본 + 컷아웃) 수집
+    const allImages: { name: string; data_url: string; is_cutout?: boolean }[] = [];
+    for (const img of images) {
+      allImages.push({ name: img.name, data_url: img.dataUrl });
+      if (img.cutoutDataUrl && img.cutoutName) {
+        allImages.push({ name: img.cutoutName, data_url: img.cutoutDataUrl, is_cutout: true });
+      }
+    }
+
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          api_key: anthropicKey,
+          images: allImages,
+          style,
+          description,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setGeneratedJson(data.json);
+      } else {
+        setError(data.error || "생성 실패");
+        if (data.raw) setGeneratedJson(data.raw);
+      }
+    } catch (e) {
+      setError(`요청 실패: ${(e as Error).message}`);
+    }
+
+    setIsGenerating(false);
+  };
+
+  // ── 수동 모드: 프롬프트 복사 ──
   const generatePrompt = () => {
-    const imageList = images.map((img, i) => `${i + 1}. ${img.name}`).join("\n");
+    const imageList = images.map((img, i) => {
+      let line = `${i + 1}. ${img.name} (원본)`;
+      if (img.cutoutName) line += `\n   ${img.cutoutName} (배경 제거됨)`;
+      return line;
+    }).join("\n");
+
     return `다음 이미지들로 고퀄리티 모션그래픽 영상용 JSON을 생성해주세요.
 
 ## 프로젝트 정보
 - 스타일: ${style}
 - 포맷: 세로형 (1080x1920)
-- 설명: ${description || "(스토리보드 이미지를 분석해서 자동으로 판단해주세요)"}
+- 설명: ${description || "(이미지를 분석해서 자동으로 판단해주세요)"}
 
 ## 업로드된 이미지 파일들
 ${imageList}
 
 ## 요구사항
-1. storyboard-schema-v2.json 형식에 맞춰 JSON을 생성해주세요
-2. 각 이미지 내 **객체들을 분석**하여 독립 레이어로 분리해주세요
-3. 인물, 배경, 텍스트, 도형(화살표 등)을 **각각 따로 애니메이션** 해주세요
-4. **3D 카메라**를 활용하여 깊이감을 주세요
-5. 요소들은 **순차적으로** 등장하게 해주세요 (0.2~0.5초 간격)
-6. 전체 영상은 **15~30초** 정도로 구성해주세요
-7. 각 씬마다 description에 **연출 의도**를 설명해주세요
-
-## 중요
-- 파일명은 위에 적힌 것을 **정확히** 사용해주세요
-- 모든 요소가 동시에 등장하면 안 됩니다 (delay 사용)
-- ancrid 수준의 고퀄리티 모션그래픽을 목표로 해주세요
-- 텍스트는 한국어로 작성해주세요
+1. storyboard-schema-v2.json 형식에 맞춰 JSON 생성
+2. 각 이미지 내 객체들을 분석하여 독립 레이어로 분리
+3. _cutout.png 파일은 배경 제거된 객체 → 독립 레이어로 사용
+4. 원본 이미지는 배경/전체샷으로 사용
+5. 3D 카메라를 활용하여 깊이감
+6. 요소들은 순차적으로 등장 (0.2~0.5초 간격)
+7. ancrid 수준의 고퀄리티 모션그래픽
+8. 텍스트는 한국어로 작성
 
 JSON만 출력해주세요.`;
   };
 
   const handleCopyPrompt = async () => {
-    const prompt = generatePrompt();
-    await navigator.clipboard.writeText(prompt);
+    await navigator.clipboard.writeText(generatePrompt());
     setCopyPromptDone(true);
     setTimeout(() => setCopyPromptDone(false), 3000);
   };
 
-  const handleJsonPaste = (text: string) => {
-    setGeneratedJson(text);
-  };
-
+  // ── ZIP 다운로드 ──
   const handleDownloadZip = async () => {
     if (!generatedJson) return;
     const JSZip = (await import("jszip")).default;
     const zip = new JSZip();
 
     let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(generatedJson);
-    } catch {
-      alert("JSON 형식이 올바르지 않습니다.");
-      return;
-    }
+    try { parsed = JSON.parse(generatedJson); } catch { alert("JSON 형식 오류"); return; }
 
     const projectName = (parsed.project as Record<string, string>)?.name || "ae_project";
     const folder = zip.folder(projectName)!;
 
-    // JSON
     folder.file(`${projectName}.json`, generatedJson);
 
-    // JSX script
     try {
       const jsxRes = await fetch("/ae_auto_pipeline.jsx");
       if (jsxRes.ok) folder.file("ae_auto_pipeline.jsx", await jsxRes.text());
     } catch {}
 
-    // Images
+    // 원본 이미지 + 컷아웃 이미지
     for (const img of images) {
       const res = await fetch(img.dataUrl);
-      const blob = await res.blob();
-      folder.file(img.name, blob);
+      folder.file(img.name, await res.blob());
+      if (img.cutoutDataUrl && img.cutoutName) {
+        const cutRes = await fetch(img.cutoutDataUrl);
+        folder.file(img.cutoutName, await cutRes.blob());
+      }
     }
 
-    // Instructions
     folder.file("사용법.txt",
       "=== AE Animation Studio v2 ===\n\n" +
       "1. After Effects 실행\n" +
@@ -141,56 +228,107 @@ JSON만 출력해주세요.`;
   const styles = [
     { value: "cinematic", label: "시네마틱", desc: "3D 깊이감, 영화적 연출", icon: "🎬" },
     { value: "news", label: "뉴스/시사", desc: "빠른 컷, 강렬한 텍스트", icon: "📰" },
-    { value: "documentary", label: "다큐멘터리", desc: "차분한 카메라, 자연스러운 전환", icon: "🎥" },
+    { value: "documentary", label: "다큐멘터리", desc: "차분한 카메라워크", icon: "🎥" },
     { value: "bold", label: "임팩트", desc: "강렬한 등장, 빠른 전환", icon: "💥" },
-    { value: "minimal", label: "미니멀", desc: "깔끔한 배치, 여백 활용", icon: "✨" },
-    { value: "epic", label: "에픽", desc: "웅장한 스케일, 극적 연출", icon: "🏔️" },
-    { value: "tech", label: "테크", desc: "미래적, 디지털 느낌", icon: "🤖" },
+    { value: "minimal", label: "미니멀", desc: "깔끔한 여백 활용", icon: "✨" },
+    { value: "epic", label: "에픽", desc: "웅장한 스케일", icon: "🏔️" },
+    { value: "tech", label: "테크", desc: "미래적 디지털 느낌", icon: "🤖" },
   ];
+
+  const hasApiKeys = !!anthropicKey;
+  const hasCutouts = images.some((img) => img.cutoutDataUrl);
 
   return (
     <>
       <Navbar />
-      <main className="pt-20 pb-8 px-4 max-w-5xl mx-auto">
+      <main className="pt-20 pb-8 px-4 max-w-6xl mx-auto">
         {/* Header */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <h1 className="text-3xl font-bold mb-2">
             <span className="text-gradient">AI 자동 모션그래픽</span>
           </h1>
-          <p className="text-white/50">
+          <p className="text-white/50 text-sm">
             이미지만 올리면 AI가 분석하여 고퀄리티 모션그래픽 JSON을 생성합니다
           </p>
         </div>
 
-        {/* Steps */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <div className={`card-glass p-4 text-center ${images.length > 0 ? "border-green-500/30" : "border-ae-highlight/30"}`}>
-            <div className="text-2xl mb-2">1</div>
-            <div className="font-semibold text-sm">이미지 업로드</div>
-            <div className="text-xs text-white/40">스토리보드 + 소스 이미지</div>
-          </div>
-          <div className={`card-glass p-4 text-center ${generatedJson ? "border-green-500/30" : ""}`}>
-            <div className="text-2xl mb-2">2</div>
-            <div className="font-semibold text-sm">AI가 JSON 생성</div>
-            <div className="text-xs text-white/40">Claude에게 프롬프트 전달</div>
-          </div>
-          <div className="card-glass p-4 text-center">
-            <div className="text-2xl mb-2">3</div>
-            <div className="font-semibold text-sm">ZIP 다운로드</div>
-            <div className="text-xs text-white/40">AE에서 바로 실행</div>
+        {/* Mode Toggle */}
+        <div className="flex justify-center mb-6">
+          <div className="bg-white/5 p-1 rounded-lg flex gap-1">
+            <button
+              onClick={() => setMode("manual")}
+              className={`px-5 py-2 rounded-md text-sm font-medium transition-all ${
+                mode === "manual" ? "bg-ae-highlight text-white" : "text-white/60"
+              }`}
+            >
+              수동 모드 (API 키 없이)
+            </button>
+            <button
+              onClick={() => { setMode("auto"); setShowApiSettings(true); }}
+              className={`px-5 py-2 rounded-md text-sm font-medium transition-all ${
+                mode === "auto" ? "bg-ae-highlight text-white" : "text-white/60"
+              }`}
+            >
+              자동 모드 (API 키 사용)
+            </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left: Upload & Settings */}
-          <div className="space-y-6">
+        {/* API Settings (자동 모드) */}
+        {mode === "auto" && (
+          <div className="card-glass p-5 mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold">API 키 설정</h3>
+              <span className="text-[10px] text-white/30">키는 서버로만 전송되며 저장되지 않습니다</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs text-white/50">
+                  Anthropic API 키 <span className="text-ae-highlight">*필수</span>
+                </label>
+                <input
+                  type="password"
+                  className="input-field w-full text-sm"
+                  placeholder="sk-ant-..."
+                  value={anthropicKey}
+                  onChange={(e) => setAnthropicKey(e.target.value)}
+                />
+                <div className="text-[10px] text-white/30">JSON 자동 생성에 사용</div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-white/50">
+                  remove.bg API 키 <span className="text-white/30">(선택)</span>
+                </label>
+                <input
+                  type="password"
+                  className="input-field w-full text-sm"
+                  placeholder="API 키..."
+                  value={removeBgKey}
+                  onChange={(e) => setRemoveBgKey(e.target.value)}
+                />
+                <div className="text-[10px] text-white/30">배경 제거에 사용 (없으면 원본 이미지만 사용)</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-6 text-sm text-red-400">
+            {error}
+            <button onClick={() => setError("")} className="ml-2 text-red-300 hover:text-white">✕</button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          {/* Left Column: Upload + Style */}
+          <div className="lg:col-span-2 space-y-5">
             {/* Image Upload */}
-            <div className="card-glass p-6">
-              <h2 className="text-lg font-bold mb-4">1. 이미지 업로드</h2>
-              <label className="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-white/20 rounded-xl cursor-pointer hover:border-ae-highlight/50 hover:bg-white/[0.02] transition-all">
-                <div className="text-4xl mb-2 opacity-40">📁</div>
-                <span className="text-sm text-white/40">클릭하여 이미지 선택 (여러 개 가능)</span>
-                <span className="text-xs text-white/25 mt-1">스토리보드 이미지 + 소스 이미지 모두 업로드</span>
+            <div className="card-glass p-5">
+              <h2 className="text-base font-bold mb-3">1. 이미지 업로드</h2>
+              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-white/20 rounded-xl cursor-pointer hover:border-ae-highlight/50 hover:bg-white/[0.02] transition-all">
+                <div className="text-3xl mb-1 opacity-40">📁</div>
+                <span className="text-xs text-white/40">여러 이미지를 한 번에 선택 가능</span>
                 <input
                   type="file"
                   accept="image/*"
@@ -200,138 +338,187 @@ JSON만 출력해주세요.`;
                 />
               </label>
 
-              {/* Uploaded Images Grid */}
               {images.length > 0 && (
-                <div className="mt-4 grid grid-cols-3 gap-2">
+                <div className="mt-3 space-y-2">
                   {images.map((img, i) => (
-                    <div key={i} className="relative group rounded-lg overflow-hidden border border-white/10">
-                      <img src={img.dataUrl} alt={img.name} className="w-full h-24 object-cover" />
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center">
-                        <button
-                          onClick={() => removeImage(i)}
-                          className="text-red-400 text-xs bg-black/50 px-2 py-1 rounded"
-                        >
-                          삭제
-                        </button>
+                    <div key={i} className="flex items-center gap-3 bg-white/5 rounded-lg p-2">
+                      <img src={img.dataUrl} alt="" className="w-12 h-12 rounded object-cover flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs truncate">{img.name}</div>
+                        {img.cutoutDataUrl ? (
+                          <div className="flex items-center gap-2 mt-1">
+                            <img src={img.cutoutDataUrl} alt="" className="w-8 h-8 rounded object-contain bg-[#333] flex-shrink-0" />
+                            <span className="text-[10px] text-green-400">✓ 배경 제거됨</span>
+                          </div>
+                        ) : img.isProcessing ? (
+                          <span className="text-[10px] text-yellow-400 animate-pulse">처리 중...</span>
+                        ) : null}
                       </div>
-                      <div className="absolute bottom-0 left-0 right-0 bg-black/70 px-1.5 py-0.5 text-[9px] text-white/60 truncate">
-                        {img.name}
-                      </div>
+                      <button onClick={() => removeImage(i)} className="text-red-400/60 hover:text-red-400 text-xs px-2">✕</button>
                     </div>
                   ))}
                 </div>
               )}
+
+              {/* 배경 제거 버튼 */}
+              {images.length > 0 && mode === "auto" && removeBgKey && (
+                <button
+                  onClick={handleRemoveBg}
+                  disabled={bgRemoveProgress.total > 0 && bgRemoveProgress.done < bgRemoveProgress.total}
+                  className="mt-3 w-full py-2.5 bg-ae-purple/20 border border-ae-purple/40 text-ae-purple rounded-lg text-sm font-medium hover:bg-ae-purple/30 transition-all disabled:opacity-50"
+                >
+                  {bgRemoveProgress.total > 0 && bgRemoveProgress.done < bgRemoveProgress.total
+                    ? `배경 제거 중... (${bgRemoveProgress.done}/${bgRemoveProgress.total})`
+                    : hasCutouts
+                    ? "✓ 배경 제거 완료 (다시 실행)"
+                    : "🔪 배경 제거하기 (객체 분리)"
+                  }
+                </button>
+              )}
+
+              {images.length > 0 && mode === "auto" && !removeBgKey && (
+                <div className="mt-3 text-[10px] text-white/30 text-center">
+                  remove.bg API 키를 입력하면 배경 제거 기능을 사용할 수 있습니다
+                </div>
+              )}
             </div>
 
-            {/* Style Selection */}
-            <div className="card-glass p-6">
-              <h2 className="text-lg font-bold mb-4">스타일 선택</h2>
-              <div className="grid grid-cols-2 gap-2">
+            {/* Style */}
+            <div className="card-glass p-5">
+              <h2 className="text-base font-bold mb-3">스타일</h2>
+              <div className="grid grid-cols-2 gap-1.5">
                 {styles.map((s) => (
                   <button
                     key={s.value}
                     onClick={() => setStyle(s.value)}
-                    className={`p-3 rounded-lg text-left transition-all ${
+                    className={`p-2.5 rounded-lg text-left transition-all ${
                       style === s.value
                         ? "bg-ae-highlight/20 border-2 border-ae-highlight"
                         : "bg-white/5 border-2 border-transparent hover:border-white/20"
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <span>{s.icon}</span>
-                      <span className="text-sm font-semibold">{s.label}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm">{s.icon}</span>
+                      <span className="text-xs font-semibold">{s.label}</span>
                     </div>
-                    <div className="text-[10px] text-white/40 mt-1">{s.desc}</div>
+                    <div className="text-[9px] text-white/40 mt-0.5">{s.desc}</div>
                   </button>
                 ))}
               </div>
             </div>
 
             {/* Description */}
-            <div className="card-glass p-6">
-              <h2 className="text-lg font-bold mb-4">영상 설명 (선택)</h2>
+            <div className="card-glass p-5">
+              <h2 className="text-base font-bold mb-3">설명 (선택)</h2>
               <textarea
-                className="input-field w-full h-24 resize-none"
-                placeholder="어떤 느낌의 영상을 원하시나요? (비워두면 AI가 이미지를 보고 자동 판단합니다)"
+                className="input-field w-full h-20 resize-none text-sm"
+                placeholder="어떤 느낌의 영상을 원하시나요?"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
           </div>
 
-          {/* Right: Generate & Result */}
-          <div className="space-y-6">
-            {/* Generate Button */}
-            <div className="card-glass p-6">
-              <h2 className="text-lg font-bold mb-4">2. AI에게 전달</h2>
-              <p className="text-sm text-white/50 mb-4">
-                아래 버튼을 누르면 프롬프트가 복사됩니다.
-                Claude 대화창에 <strong>이미지들과 함께</strong> 붙여넣기 하세요.
-              </p>
-              <button
-                onClick={handleCopyPrompt}
-                disabled={images.length === 0}
-                className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${
-                  images.length === 0
-                    ? "bg-white/10 text-white/30 cursor-not-allowed"
-                    : copyPromptDone
-                    ? "bg-green-500 text-white"
-                    : "bg-gradient-to-r from-ae-highlight to-ae-purple text-white hover:opacity-90 hover:scale-[1.02] active:scale-[0.98]"
-                }`}
-              >
-                {copyPromptDone ? "✓ 프롬프트 복사됨!" : "프롬프트 복사하기"}
-              </button>
+          {/* Right Column: Generate + Result */}
+          <div className="lg:col-span-3 space-y-5">
+            {/* Generate */}
+            <div className="card-glass p-5">
+              <h2 className="text-base font-bold mb-3">
+                2. {mode === "auto" ? "AI 자동 생성" : "프롬프트 복사 → Claude에 전달"}
+              </h2>
 
-              {images.length === 0 && (
-                <p className="text-xs text-yellow-400/60 mt-2 text-center">
-                  먼저 이미지를 업로드해주세요
-                </p>
+              {mode === "auto" ? (
+                <>
+                  <button
+                    onClick={handleAutoGenerate}
+                    disabled={images.length === 0 || !anthropicKey || isGenerating}
+                    className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${
+                      images.length === 0 || !anthropicKey
+                        ? "bg-white/10 text-white/30 cursor-not-allowed"
+                        : isGenerating
+                        ? "bg-ae-highlight/50 text-white animate-pulse cursor-wait"
+                        : "bg-gradient-to-r from-ae-highlight to-ae-purple text-white hover:opacity-90 hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-ae-highlight/20"
+                    }`}
+                  >
+                    {isGenerating ? "🔄 AI가 분석 중... (30초~1분)" : "⚡ AI 자동 생성"}
+                  </button>
+                  {!anthropicKey && (
+                    <p className="text-[10px] text-yellow-400/60 mt-2 text-center">Anthropic API 키를 먼저 입력해주세요</p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={handleCopyPrompt}
+                    disabled={images.length === 0}
+                    className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${
+                      images.length === 0
+                        ? "bg-white/10 text-white/30 cursor-not-allowed"
+                        : copyPromptDone
+                        ? "bg-green-500 text-white"
+                        : "bg-gradient-to-r from-ae-highlight to-ae-purple text-white hover:opacity-90 hover:scale-[1.02]"
+                    }`}
+                  >
+                    {copyPromptDone ? "✓ 프롬프트 복사됨!" : "📋 프롬프트 복사하기"}
+                  </button>
+                  <div className="mt-3 bg-white/5 rounded-lg p-3 space-y-1.5 text-[11px] text-white/50">
+                    <div className="font-semibold text-white/70">사용 방법:</div>
+                    <div>1. 위 버튼으로 프롬프트 복사</div>
+                    <div>2. Claude 대화창에 <strong>이미지들을 드래그</strong></div>
+                    <div>3. 복사한 프롬프트를 <strong>붙여넣기</strong> 후 전송</div>
+                    <div>4. 생성된 JSON을 아래에 붙여넣기</div>
+                  </div>
+                </>
               )}
-
-              {/* How to use */}
-              <div className="mt-4 bg-white/5 rounded-lg p-4 space-y-2 text-xs text-white/50">
-                <div className="font-semibold text-white/70">사용 방법:</div>
-                <div>1. 위 버튼으로 프롬프트 복사</div>
-                <div>2. <strong>Claude 대화창</strong>을 열어주세요</div>
-                <div>3. 업로드한 이미지들을 <strong>대화창에 드래그</strong></div>
-                <div>4. 복사한 프롬프트를 <strong>붙여넣기</strong> 후 전송</div>
-                <div>5. Claude가 생성한 JSON을 아래에 붙여넣기</div>
-              </div>
             </div>
 
-            {/* JSON Input */}
-            <div className="card-glass p-6">
-              <h2 className="text-lg font-bold mb-4">3. 생성된 JSON 붙여넣기</h2>
-              <textarea
-                className="input-field w-full h-48 resize-none font-mono text-xs"
-                placeholder='Claude가 생성한 JSON을 여기에 붙여넣으세요...&#10;&#10;{&#10;  "project": {&#10;    "name": "...",&#10;    ...&#10;  }&#10;}'
-                value={generatedJson}
-                onChange={(e) => handleJsonPaste(e.target.value)}
-              />
-              {generatedJson && (
-                <div className="mt-2">
-                  {(() => {
-                    try {
-                      const p = JSON.parse(generatedJson);
-                      const scenes = p.scenes?.length || 0;
-                      const layers = p.scenes?.reduce((sum: number, s: { layers?: unknown[] }) => sum + (s.layers?.length || 0), 0) || 0;
-                      return (
-                        <div className="flex gap-3 text-xs">
-                          <span className="text-green-400">✓ 유효한 JSON</span>
-                          <span className="text-white/40">{scenes}개 씬</span>
-                          <span className="text-white/40">{layers}개 레이어</span>
-                        </div>
-                      );
-                    } catch {
-                      return <span className="text-red-400 text-xs">✗ JSON 형식 오류</span>;
-                    }
-                  })()}
+            {/* JSON Result */}
+            <div className="card-glass p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-base font-bold">3. 생성된 JSON</h2>
+                {generatedJson && (() => {
+                  try {
+                    const p = JSON.parse(generatedJson);
+                    const scenes = p.scenes?.length || 0;
+                    const layers = p.scenes?.reduce((sum: number, s: { layers?: unknown[] }) => sum + (s.layers?.length || 0), 0) || 0;
+                    return (
+                      <div className="flex gap-2 text-[10px]">
+                        <span className="text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full">✓ 유효</span>
+                        <span className="text-white/40">{scenes}씬</span>
+                        <span className="text-white/40">{layers}레이어</span>
+                      </div>
+                    );
+                  } catch { return <span className="text-red-400 text-[10px]">✗ 형식 오류</span>; }
+                })()}
+              </div>
+
+              {mode === "manual" || !generatedJson ? (
+                <textarea
+                  className="input-field w-full h-48 resize-none font-mono text-[11px]"
+                  placeholder={mode === "auto" ? "AI가 생성한 JSON이 여기에 표시됩니다..." : "Claude가 생성한 JSON을 여기에 붙여넣으세요..."}
+                  value={generatedJson}
+                  onChange={(e) => setGeneratedJson(e.target.value)}
+                />
+              ) : (
+                <div className="bg-white/5 rounded-lg p-3 max-h-80 overflow-auto">
+                  <pre className="text-[10px] text-white/60 font-mono whitespace-pre-wrap">{generatedJson}</pre>
                 </div>
+              )}
+
+              {generatedJson && mode === "auto" && (
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(generatedJson);
+                  }}
+                  className="mt-2 text-xs text-white/50 hover:text-white"
+                >
+                  JSON 복사
+                </button>
               )}
             </div>
 
             {/* Download ZIP */}
-            <div className="card-glass p-6">
+            <div className="card-glass p-5">
               <button
                 onClick={handleDownloadZip}
                 disabled={!generatedJson}
@@ -343,9 +530,25 @@ JSON만 출력해주세요.`;
               >
                 📦 프로젝트 ZIP 다운로드
               </button>
-              <div className="mt-3 text-xs text-white/40 text-center">
-                JSON + JSX 스크립트 + 이미지 전부 포함
+              <div className="mt-2 text-[10px] text-white/30 text-center">
+                JSON + JSX 스크립트 + 원본 이미지 {hasCutouts && "+ 배경 제거 이미지"} 전부 포함
               </div>
+
+              {/* What's included */}
+              {generatedJson && (
+                <div className="mt-3 bg-white/5 rounded-lg p-3 text-[10px] space-y-1 text-white/50">
+                  <div className="text-white/70 font-semibold">ZIP 포함 파일:</div>
+                  {images.map((img, i) => (
+                    <div key={i}>
+                      <span className="text-green-400">✓</span> {img.name}
+                      {img.cutoutName && <><br /><span className="text-green-400 ml-2">✓</span> {img.cutoutName} (배경 제거)</>}
+                    </div>
+                  ))}
+                  <div><span className="text-green-400">✓</span> ae_auto_pipeline.jsx</div>
+                  <div><span className="text-green-400">✓</span> 프로젝트.json</div>
+                  <div><span className="text-green-400">✓</span> 사용법.txt</div>
+                </div>
+              )}
             </div>
           </div>
         </div>
