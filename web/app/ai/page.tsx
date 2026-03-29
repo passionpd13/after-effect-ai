@@ -1,5 +1,5 @@
 "use client";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Navbar from "@/components/Navbar";
 
 interface UploadedImage {
@@ -145,11 +145,43 @@ export default function AiModePage() {
     validateJson(text);
   }, [validateJson]);
 
-  // API Keys (선택적)
+  // API Keys (localStorage에서 복원)
   const [anthropicKey, setAnthropicKey] = useState("");
+  const [geminiKey, setGeminiKey] = useState("");
   const [removeBgKey, setRemoveBgKey] = useState("");
   const [showApiSettings, setShowApiSettings] = useState(false);
   const [mode, setMode] = useState<Mode>("manual");
+  const [aiProvider, setAiProvider] = useState<"gemini" | "anthropic">("gemini");
+
+  // localStorage에서 키 복원
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("ae_studio_keys");
+      if (saved) {
+        const keys = JSON.parse(saved);
+        if (keys.gemini) setGeminiKey(keys.gemini);
+        if (keys.anthropic) setAnthropicKey(keys.anthropic);
+        if (keys.removebg) setRemoveBgKey(keys.removebg);
+        if (keys.provider) setAiProvider(keys.provider);
+      }
+    } catch {}
+  }, []);
+
+  // 키 저장
+  const saveKeys = useCallback(() => {
+    try {
+      localStorage.setItem("ae_studio_keys", JSON.stringify({
+        gemini: geminiKey,
+        anthropic: anthropicKey,
+        removebg: removeBgKey,
+        provider: aiProvider,
+      }));
+    } catch {}
+  }, [geminiKey, anthropicKey, removeBgKey, aiProvider]);
+
+  useEffect(() => {
+    saveKeys();
+  }, [saveKeys]);
 
   // 배경 제거 진행률
   const [bgRemoveProgress, setBgRemoveProgress] = useState({ done: 0, total: 0 });
@@ -246,10 +278,11 @@ export default function AiModePage() {
     }
   };
 
-  // ── AI 자동 생성 (Anthropic API) ──
+  // ── AI 자동 생성 (Gemini / Anthropic API) ──
   const handleAutoGenerate = async () => {
-    if (!anthropicKey) {
-      setError("Anthropic API 키를 입력해주세요");
+    const currentKey = aiProvider === "gemini" ? geminiKey : anthropicKey;
+    if (!currentKey) {
+      setError(`${aiProvider === "gemini" ? "Gemini" : "Anthropic"} API 키를 입력해주세요`);
       return;
     }
     setIsGenerating(true);
@@ -264,12 +297,14 @@ export default function AiModePage() {
       }
     }
 
+    const endpoint = aiProvider === "gemini" ? "/api/generate-gemini" : "/api/generate";
+
     try {
-      const res = await fetch("/api/generate", {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          api_key: anthropicKey,
+          api_key: currentKey,
           images: allImages,
           style,
           description,
@@ -452,25 +487,78 @@ JSON만 출력해주세요.`;
           <div className="card-glass p-5 mb-6">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold">API 키 설정</h3>
-              <span className="text-[10px] text-white/30">키는 서버로만 전송되며 저장되지 않습니다</span>
+              <span className="text-[10px] text-green-400/70">키는 브라우저에 로컬 저장됩니다 (서버에 저장 안됨)</span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="text-xs text-white/50">
-                  Anthropic API 키 <span className="text-ae-highlight">*필수</span>
-                </label>
-                <input
-                  type="password"
-                  className="input-field w-full text-sm"
-                  placeholder="sk-ant-..."
-                  value={anthropicKey}
-                  onChange={(e) => setAnthropicKey(e.target.value)}
-                />
-                <div className="text-[10px] text-white/30">JSON 자동 생성에 사용</div>
+
+            {/* AI 엔진 선택 */}
+            <div className="mb-4">
+              <label className="text-xs text-white/50 mb-1.5 block">AI 엔진 선택</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setAiProvider("gemini")}
+                  className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                    aiProvider === "gemini"
+                      ? "bg-blue-500/20 border-2 border-blue-500 text-blue-400"
+                      : "bg-white/5 border-2 border-transparent text-white/50 hover:border-white/20"
+                  }`}
+                >
+                  <span>🔷</span> Gemini
+                  {geminiKey && <span className="text-[9px] text-green-400">● 키 저장됨</span>}
+                </button>
+                <button
+                  onClick={() => setAiProvider("anthropic")}
+                  className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                    aiProvider === "anthropic"
+                      ? "bg-orange-500/20 border-2 border-orange-500 text-orange-400"
+                      : "bg-white/5 border-2 border-transparent text-white/50 hover:border-white/20"
+                  }`}
+                >
+                  <span>🟠</span> Claude (Anthropic)
+                  {anthropicKey && <span className="text-[9px] text-green-400">● 키 저장됨</span>}
+                </button>
               </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* 선택된 AI 키 입력 */}
+              <div className="space-y-1">
+                {aiProvider === "gemini" ? (
+                  <>
+                    <label className="text-xs text-white/50">
+                      Gemini API 키 <span className="text-blue-400">*필수</span>
+                    </label>
+                    <input
+                      type="password"
+                      className="input-field w-full text-sm"
+                      placeholder="AIza..."
+                      value={geminiKey}
+                      onChange={(e) => setGeminiKey(e.target.value)}
+                    />
+                    <div className="text-[10px] text-white/30">
+                      Google AI Studio에서 발급 (무료 사용 가능)
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <label className="text-xs text-white/50">
+                      Anthropic API 키 <span className="text-orange-400">*필수</span>
+                    </label>
+                    <input
+                      type="password"
+                      className="input-field w-full text-sm"
+                      placeholder="sk-ant-..."
+                      value={anthropicKey}
+                      onChange={(e) => setAnthropicKey(e.target.value)}
+                    />
+                    <div className="text-[10px] text-white/30">Anthropic Console에서 발급</div>
+                  </>
+                )}
+              </div>
+
+              {/* remove.bg 키 (항상 표시) */}
               <div className="space-y-1">
                 <label className="text-xs text-white/50">
-                  remove.bg API 키 <span className="text-white/30">(선택)</span>
+                  remove.bg API 키 <span className="text-white/30">(선택 - 배경 제거용)</span>
                 </label>
                 <input
                   type="password"
@@ -479,7 +567,7 @@ JSON만 출력해주세요.`;
                   value={removeBgKey}
                   onChange={(e) => setRemoveBgKey(e.target.value)}
                 />
-                <div className="text-[10px] text-white/30">배경 제거에 사용 (없으면 원본 이미지만 사용)</div>
+                <div className="text-[10px] text-white/30">없으면 원본 이미지만 사용</div>
               </div>
             </div>
           </div>
@@ -666,22 +754,35 @@ JSON만 출력해주세요.`;
 
               {mode === "auto" ? (
                 <>
-                  <button
-                    onClick={handleAutoGenerate}
-                    disabled={images.length === 0 || !anthropicKey || isGenerating}
-                    className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${
-                      images.length === 0 || !anthropicKey
-                        ? "bg-white/10 text-white/30 cursor-not-allowed"
-                        : isGenerating
-                        ? "bg-ae-highlight/50 text-white animate-pulse cursor-wait"
-                        : "bg-gradient-to-r from-ae-highlight to-ae-purple text-white hover:opacity-90 hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-ae-highlight/20"
-                    }`}
-                  >
-                    {isGenerating ? "🔄 AI가 분석 중... (30초~1분)" : "⚡ AI 자동 생성"}
-                  </button>
-                  {!anthropicKey && (
-                    <p className="text-[10px] text-yellow-400/60 mt-2 text-center">Anthropic API 키를 먼저 입력해주세요</p>
-                  )}
+                  {(() => {
+                    const currentKey = aiProvider === "gemini" ? geminiKey : anthropicKey;
+                    const providerLabel = aiProvider === "gemini" ? "Gemini" : "Claude";
+                    const providerIcon = aiProvider === "gemini" ? "🔷" : "🟠";
+                    return (
+                      <>
+                        <button
+                          onClick={handleAutoGenerate}
+                          disabled={images.length === 0 || !currentKey || isGenerating}
+                          className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${
+                            images.length === 0 || !currentKey
+                              ? "bg-white/10 text-white/30 cursor-not-allowed"
+                              : isGenerating
+                              ? "bg-ae-highlight/50 text-white animate-pulse cursor-wait"
+                              : "bg-gradient-to-r from-ae-highlight to-ae-purple text-white hover:opacity-90 hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-ae-highlight/20"
+                          }`}
+                        >
+                          {isGenerating
+                            ? `🔄 ${providerLabel}가 분석 중... (30초~1분)`
+                            : `${providerIcon} ${providerLabel}로 자동 생성`}
+                        </button>
+                        {!currentKey && (
+                          <p className="text-[10px] text-yellow-400/60 mt-2 text-center">
+                            {providerLabel} API 키를 먼저 입력해주세요
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()}
                 </>
               ) : (
                 <>
