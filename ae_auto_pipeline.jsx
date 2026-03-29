@@ -657,7 +657,7 @@ function applyDropShadow(layer, shadowConfig) {
 // ============================================================
 // [9] 오디오 처리
 // ============================================================
-function handleAudio(comp, data) {
+function handleAudio(comp, data, projectFolder) {
     // BGM 추가
     if (data.audio_global && data.audio_global.bgm) {
         var bgmFile = new File(projectFolder + "/" + data.audio_global.bgm);
@@ -778,19 +778,144 @@ function addToRenderQueue(comp, renderSettings) {
 }
 
 // ============================================================
+// [JSON 검증] JSON 구조 검증 함수
+// ============================================================
+function validateJSON(data, projectFolder) {
+    var errors = [];
+    var warnings = [];
+
+    // 1. 필수 최상위 필드 확인
+    if (!data.project) errors.push("'project' 필드가 없습니다");
+    if (!data.settings) errors.push("'settings' 필드가 없습니다");
+    if (!data.scenes) errors.push("'scenes' 필드가 없습니다");
+    if (data.scenes && data.scenes.length === 0) errors.push("씬이 하나도 없습니다");
+
+    // 에러가 있으면 여기서 중단
+    if (errors.length > 0) return { valid: false, errors: errors, warnings: warnings };
+
+    // 2. project 필드 확인
+    if (!data.project.name) warnings.push("프로젝트 이름이 없습니다 (기본값 'main_comp' 사용)");
+
+    // 3. settings 필드 확인
+    var s = data.settings;
+    if (!s.width || !s.height) warnings.push("해상도 설정이 없습니다 (기본값 1080x1920 사용)");
+    if (!s.fps) warnings.push("FPS 설정이 없습니다 (기본값 30 사용)");
+    if (!s.total_duration || s.total_duration <= 0) {
+        warnings.push("total_duration이 없거나 0입니다 (씬 합계로 자동 계산)");
+    }
+
+    // 4. 씬별 검증
+    var totalDuration = 0;
+    var missingImages = [];
+    for (var i = 0; i < data.scenes.length; i++) {
+        var scene = data.scenes[i];
+        var sceneLabel = "씬 " + (scene.id || (i + 1));
+
+        // duration 확인
+        if (!scene.duration || scene.duration <= 0) {
+            errors.push(sceneLabel + ": duration이 없거나 0입니다");
+        } else {
+            totalDuration += scene.duration;
+        }
+
+        // 이미지 파일 존재 확인
+        if (scene.image && scene.image.file) {
+            var imgPath = new File(projectFolder + "/" + scene.image.file);
+            if (!imgPath.exists) {
+                missingImages.push(sceneLabel + ": '" + scene.image.file + "' 파일을 찾을 수 없습니다");
+            }
+        }
+
+        // v2 스키마: layers 확인
+        if (scene.layers) {
+            for (var j = 0; j < scene.layers.length; j++) {
+                var layer = scene.layers[j];
+                if (layer.type === "image" && layer.image_source && layer.image_source.file) {
+                    var layerImgPath = new File(projectFolder + "/" + layer.image_source.file);
+                    if (!layerImgPath.exists) {
+                        missingImages.push(sceneLabel + " 레이어 '" + (layer.name || layer.id) + "': '" + layer.image_source.file + "' 파일을 찾을 수 없습니다");
+                    }
+                }
+            }
+        }
+    }
+
+    // 이미지 누락은 에러로 분류
+    for (var m = 0; m < missingImages.length; m++) {
+        errors.push(missingImages[m]);
+    }
+
+    // 5. 오디오 파일 확인
+    if (data.audio_global && data.audio_global.bgm) {
+        var bgmPath = new File(projectFolder + "/" + data.audio_global.bgm);
+        if (!bgmPath.exists) {
+            warnings.push("BGM 파일 '" + data.audio_global.bgm + "'을 찾을 수 없습니다 (무시됨)");
+        }
+    }
+
+    return {
+        valid: errors.length === 0,
+        errors: errors,
+        warnings: warnings,
+        stats: {
+            sceneCount: data.scenes.length,
+            totalDuration: totalDuration,
+            imageCount: missingImages.length === 0 ? "모든 이미지 확인됨" : (missingImages.length + "개 이미지 누락")
+        }
+    };
+}
+
+function showValidationResult(result) {
+    var msg = "=== JSON 검증 결과 ===\n\n";
+
+    // 통계
+    msg += "씬 수: " + result.stats.sceneCount + "개\n";
+    msg += "총 길이: " + result.stats.totalDuration.toFixed(1) + "초\n";
+    msg += "이미지: " + result.stats.imageCount + "\n\n";
+
+    if (result.errors.length > 0) {
+        msg += "❌ 오류 (" + result.errors.length + "개):\n";
+        for (var i = 0; i < result.errors.length; i++) {
+            msg += "  • " + result.errors[i] + "\n";
+        }
+        msg += "\n위 오류를 수정한 후 다시 시도하세요.\n";
+        msg += "이미지 파일이 JSON과 같은 폴더에 있는지 확인하세요.";
+        alert(msg);
+        return false;
+    }
+
+    if (result.warnings.length > 0) {
+        msg += "⚠ 경고 (" + result.warnings.length + "개):\n";
+        for (var w = 0; w < result.warnings.length; w++) {
+            msg += "  • " + result.warnings[w] + "\n";
+        }
+        msg += "\n계속 진행하시겠습니까?";
+        return confirm(msg);
+    }
+
+    msg += "✅ 문제 없음! 생성을 시작합니다.";
+    alert(msg);
+    return true;
+}
+
+// ============================================================
 // [MAIN] 메인 실행 함수
 // ============================================================
 function main() {
     // JSON 파일 선택
     var jsonFile = File.openDialog("스토리보드 JSON 파일을 선택하세요", "JSON Files:*.json");
     if (!jsonFile) return;
-    
+
     var projectFolder = jsonFile.parent.fsName;
-    
+
     // JSON 로드
     var data = loadJSON(jsonFile.fsName);
     if (!data) return;
-    
+
+    // JSON 검증
+    var validation = validateJSON(data, projectFolder);
+    if (!showValidationResult(validation)) return;
+
     // 언두 그룹 시작
     app.beginUndoGroup("AE Auto Pipeline");
     
@@ -846,7 +971,7 @@ function main() {
         }
         
         // 4. 오디오 처리
-        handleAudio(comp, data);
+        handleAudio(comp, data, projectFolder);
         
         // 5. 렌더 큐에 추가
         if (data.render) {
