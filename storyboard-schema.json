@@ -1,0 +1,274 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AE Auto Pipeline - Storyboard Schema v1.0",
+  "description": "Claude가 스토리보드를 분석하여 생성하는 JSON 포맷. ExtendScript가 이 JSON을 읽어 After Effects에서 자동 영상 생성",
+  
+  "type": "object",
+  "required": ["project", "settings", "scenes"],
+  
+  "properties": {
+    
+    "project": {
+      "type": "object",
+      "description": "프로젝트 기본 정보",
+      "required": ["name", "description"],
+      "properties": {
+        "name": { "type": "string", "description": "프로젝트명 (영문, 언더스코어)", "pattern": "^[a-z0-9_]+$" },
+        "description": { "type": "string", "description": "영상 주제 설명" },
+        "created_by": { "type": "string", "default": "claude_analysis" },
+        "version": { "type": "string", "default": "1.0" }
+      }
+    },
+
+    "settings": {
+      "type": "object",
+      "description": "영상 기본 설정",
+      "properties": {
+        "width": { "type": "integer", "default": 1080, "enum": [1080, 1920, 3840] },
+        "height": { "type": "integer", "default": 1920, "enum": [1080, 1920, 3840] },
+        "fps": { "type": "integer", "default": 30, "enum": [24, 30, 60] },
+        "format": { "type": "string", "default": "vertical", "enum": ["vertical", "horizontal", "square"] },
+        "background_color": { 
+          "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3,
+          "default": [0.85, 0.85, 0.85],
+          "description": "RGB 0~1 범위"
+        },
+        "total_duration": { "type": "number", "description": "자동 계산됨 (초)" }
+      }
+    },
+
+    "global_style": {
+      "type": "object",
+      "description": "전체 영상에 적용되는 스타일",
+      "properties": {
+        "font_family": { "type": "string", "default": "Noto Sans KR" },
+        "title_font_size": { "type": "integer", "default": 60 },
+        "subtitle_font_size": { "type": "integer", "default": 40 },
+        "text_color": { "type": "array", "default": [1, 1, 1], "description": "RGB 0~1" },
+        "text_stroke": { 
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "color": { "type": "array", "default": [0, 0, 0] },
+            "width": { "type": "number", "default": 3 }
+          }
+        },
+        "color_theme": {
+          "type": "string",
+          "enum": ["neutral", "warm", "cool", "dark", "bright"],
+          "default": "neutral"
+        }
+      }
+    },
+
+    "scenes": {
+      "type": "array",
+      "description": "장면 시퀀스",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "duration"],
+        "properties": {
+          
+          "id": { "type": "integer", "description": "장면 순서 번호" },
+          
+          "type": { 
+            "type": "string", 
+            "enum": ["image", "text_only", "split_screen", "comparison"],
+            "description": "장면 유형"
+          },
+
+          "duration": { "type": "number", "minimum": 0.5, "maximum": 30, "description": "초 단위" },
+
+          "image": {
+            "type": "object",
+            "description": "이미지 레이어 설정",
+            "properties": {
+              "file": { "type": "string", "description": "소스 이미지 파일명" },
+              "fit_mode": { 
+                "type": "string", 
+                "enum": ["cover", "contain", "stretch", "original"],
+                "default": "contain"
+              },
+              "position": {
+                "type": "object",
+                "properties": {
+                  "x": { "type": "string", "enum": ["left", "center", "right"], "default": "center" },
+                  "y": { "type": "string", "enum": ["top", "center", "bottom"], "default": "center" }
+                }
+              },
+              "shadow": {
+                "type": "object",
+                "properties": {
+                  "enabled": { "type": "boolean", "default": false },
+                  "color": { "type": "array", "default": [0, 0, 0] },
+                  "opacity": { "type": "number", "default": 0.5 },
+                  "distance": { "type": "number", "default": 10 },
+                  "softness": { "type": "number", "default": 15 }
+                }
+              }
+            }
+          },
+
+          "text": {
+            "type": "object",
+            "description": "텍스트 오버레이",
+            "properties": {
+              "content": { "type": "string" },
+              "position": { 
+                "type": "string", 
+                "enum": ["top", "center", "bottom", "top_left", "top_right", "bottom_left", "bottom_right"],
+                "default": "top"
+              },
+              "size_override": { "type": "integer", "description": "global_style 덮어쓰기" },
+              "animation": {
+                "type": "string",
+                "enum": ["none", "fade_in", "type_writer", "slide_up", "slide_down", "bounce", "blur_in"],
+                "default": "fade_in"
+              },
+              "delay": { "type": "number", "default": 0, "description": "텍스트 등장 지연 (초)" }
+            }
+          },
+
+          "animation": {
+            "type": "object",
+            "description": "장면 내 애니메이션",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "zoom_in",
+                  "zoom_out",
+                  "pan_left",
+                  "pan_right",
+                  "pan_up",
+                  "pan_down",
+                  "ken_burns",
+                  "rotate_cw",
+                  "rotate_ccw",
+                  "float",
+                  "pulse",
+                  "shake"
+                ],
+                "default": "none"
+              },
+              "intensity": { 
+                "type": "string", 
+                "enum": ["subtle", "normal", "strong"],
+                "default": "normal",
+                "description": "subtle=10%, normal=20%, strong=40% 변화량"
+              },
+              "easing": {
+                "type": "string",
+                "enum": ["linear", "ease_in", "ease_out", "ease_in_out", "overshoot"],
+                "default": "ease_in_out"
+              }
+            }
+          },
+
+          "effects": {
+            "type": "array",
+            "description": "적용할 이펙트 목록 (중첩 가능)",
+            "items": {
+              "type": "object",
+              "required": ["type"],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "drop_shadow",
+                    "glow",
+                    "blur",
+                    "color_correction",
+                    "vignette",
+                    "grain",
+                    "chromatic_aberration",
+                    "light_sweep",
+                    "particles",
+                    "lens_flare"
+                  ]
+                },
+                "params": {
+                  "type": "object",
+                  "description": "이펙트별 파라미터 (이펙트 종류에 따라 다름)",
+                  "additionalProperties": true
+                },
+                "start_time": { "type": "number", "default": 0 },
+                "end_time": { "type": "number", "description": "미지정시 장면 끝까지" }
+              }
+            }
+          },
+
+          "transition_to_next": {
+            "type": "object",
+            "description": "다음 장면으로의 전환 효과",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "none",
+                  "cut",
+                  "fade",
+                  "crossfade",
+                  "morph",
+                  "slide_left",
+                  "slide_right",
+                  "slide_up",
+                  "slide_down",
+                  "zoom_transition",
+                  "wipe_left",
+                  "wipe_right",
+                  "wipe_circle",
+                  "dissolve",
+                  "blur_transition",
+                  "flip",
+                  "cube_rotate"
+                ],
+                "default": "crossfade"
+              },
+              "duration": { "type": "number", "default": 1, "description": "전환 시간 (초)" },
+              "easing": {
+                "type": "string",
+                "enum": ["linear", "ease_in", "ease_out", "ease_in_out"],
+                "default": "ease_in_out"
+              }
+            }
+          },
+
+          "audio": {
+            "type": "object",
+            "description": "장면별 오디오 설정",
+            "properties": {
+              "sfx": { "type": "string", "description": "효과음 파일명" },
+              "sfx_volume": { "type": "number", "default": 1.0, "minimum": 0, "maximum": 1 },
+              "narration": { "type": "string", "description": "나레이션 텍스트 (TTS용)" }
+            }
+          }
+        }
+      }
+    },
+
+    "audio_global": {
+      "type": "object",
+      "description": "전체 오디오 설정",
+      "properties": {
+        "bgm": { "type": "string", "description": "배경음악 파일명" },
+        "bgm_volume": { "type": "number", "default": 0.3 },
+        "bgm_fade_in": { "type": "number", "default": 2 },
+        "bgm_fade_out": { "type": "number", "default": 2 }
+      }
+    },
+
+    "render": {
+      "type": "object",
+      "description": "렌더링 설정",
+      "properties": {
+        "output_format": { "type": "string", "enum": ["mp4", "mov", "avi"], "default": "mp4" },
+        "codec": { "type": "string", "enum": ["h264", "h265", "prores"], "default": "h264" },
+        "quality": { "type": "string", "enum": ["draft", "normal", "high", "best"], "default": "high" },
+        "output_filename": { "type": "string" }
+      }
+    }
+  }
+}

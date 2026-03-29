@@ -1,0 +1,164 @@
+{
+  "project": {
+    "name": "rickshaw_evolution",
+    "description": "인력거에서 자전거 인력거로의 변천사를 보여주는 세로형 영상",
+    "created_by": "claude_analysis",
+    "version": "1.0"
+  },
+
+  "settings": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "format": "vertical",
+    "background_color": [0.78, 0.78, 0.80],
+    "total_duration": 12.5
+  },
+
+  "global_style": {
+    "font_family": "Noto Sans KR",
+    "title_font_size": 55,
+    "subtitle_font_size": 36,
+    "text_color": [0.2, 0.2, 0.2],
+    "text_stroke": {
+      "enabled": false
+    },
+    "color_theme": "neutral"
+  },
+
+  "scenes": [
+    {
+      "id": 1,
+      "type": "image",
+      "duration": 4,
+      "image": {
+        "file": "hand_rickshaw.png",
+        "fit_mode": "contain",
+        "position": { "x": "center", "y": "center" },
+        "shadow": {
+          "enabled": true,
+          "color": [0, 0, 0],
+          "opacity": 0.4,
+          "distance": 12,
+          "softness": 20
+        }
+      },
+      "text": {
+        "content": "hand-pulled rickshaws",
+        "position": "top",
+        "size_override": 50,
+        "animation": "fade_in",
+        "delay": 0.5
+      },
+      "animation": {
+        "type": "zoom_in",
+        "intensity": "subtle",
+        "easing": "ease_in_out"
+      },
+      "effects": [
+        {
+          "type": "vignette",
+          "params": { "amount": 30, "feather": 100 }
+        },
+        {
+          "type": "light_sweep",
+          "params": { "angle": 45, "width": 200, "intensity": 0.3 },
+          "start_time": 1,
+          "end_time": 2.5
+        }
+      ],
+      "transition_to_next": {
+        "type": "morph",
+        "duration": 1.5,
+        "easing": "ease_in_out"
+      },
+      "audio": {
+        "narration": "19세기 일본에서 처음 등장한 인력거는 사람이 직접 끌어야 했습니다."
+      }
+    },
+
+    {
+      "id": 2,
+      "type": "image",
+      "duration": 4,
+      "image": {
+        "file": "cycle_rickshaw.png",
+        "fit_mode": "contain",
+        "position": { "x": "center", "y": "center" },
+        "shadow": {
+          "enabled": true,
+          "color": [0, 0, 0],
+          "opacity": 0.4,
+          "distance": 12,
+          "softness": 20
+        }
+      },
+      "text": {
+        "content": "Cycle rickshaws",
+        "position": "bottom",
+        "size_override": 50,
+        "animation": "slide_up",
+        "delay": 0.3
+      },
+      "animation": {
+        "type": "ken_burns",
+        "intensity": "normal",
+        "easing": "linear"
+      },
+      "effects": [
+        {
+          "type": "drop_shadow",
+          "params": { "opacity": 0.5, "direction": 135, "distance": 15, "softness": 10 }
+        }
+      ],
+      "transition_to_next": {
+        "type": "fade",
+        "duration": 1,
+        "easing": "ease_out"
+      },
+      "audio": {
+        "narration": "이후 자전거와 결합된 사이클 릭샤가 등장하며 운송 효율이 크게 높아졌습니다."
+      }
+    },
+
+    {
+      "id": 3,
+      "type": "comparison",
+      "duration": 3,
+      "image": {
+        "file": "hand_rickshaw.png",
+        "fit_mode": "contain",
+        "position": { "x": "left", "y": "center" }
+      },
+      "text": {
+        "content": "Evolution of Transportation",
+        "position": "top",
+        "animation": "type_writer",
+        "delay": 0
+      },
+      "animation": {
+        "type": "none"
+      },
+      "effects": [],
+      "transition_to_next": {
+        "type": "fade",
+        "duration": 1.5,
+        "easing": "ease_out"
+      }
+    }
+  ],
+
+  "audio_global": {
+    "bgm": "ambient_documentary.mp3",
+    "bgm_volume": 0.2,
+    "bgm_fade_in": 2,
+    "bgm_fade_out": 3
+  },
+
+  "render": {
+    "output_format": "mp4",
+    "codec": "h264",
+    "quality": "high",
+    "output_filename": "rickshaw_evolution_final.mp4"
+  }
+}
