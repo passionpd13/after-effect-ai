@@ -486,66 +486,73 @@ function applyEasing(property, easingType) {
 // ============================================================
 function applyEffects(layer, effects, startTime) {
     if (!effects || effects.length === 0) return;
-    
+
     for (var i = 0; i < effects.length; i++) {
         var effect = effects[i];
+        if (!effect || !effect.type) continue;
+        var p = effect.params || {};
         var effectStart = startTime + (effect.start_time || 0);
-        
-        switch (effect.type) {
-            case "drop_shadow":
-                var ds = layer.Effects.addProperty("ADBE Drop Shadow");
-                ds.property("ADBE Drop Shadow-0001").setValue(effect.params.opacity * 255 || 128);
-                ds.property("ADBE Drop Shadow-0002").setValue(effect.params.direction || 135);
-                ds.property("ADBE Drop Shadow-0003").setValue(effect.params.distance || 10);
-                ds.property("ADBE Drop Shadow-0004").setValue(effect.params.softness || 10);
-                break;
-                
-            case "glow":
-                var glow = layer.Effects.addProperty("ADBE Glo2");
-                glow.property("ADBE Glo2-0001").setValue(effect.params.threshold || 60);
-                glow.property("ADBE Glo2-0002").setValue(effect.params.radius || 30);
-                glow.property("ADBE Glo2-0003").setValue(effect.params.intensity || 1);
-                break;
-                
-            case "blur":
-                var blur = layer.Effects.addProperty("ADBE Gaussian Blur 2");
-                blur.property("ADBE Gaussian Blur 2-0001").setValue(effect.params.amount || 10);
-                break;
-                
-            case "vignette":
-                // 비네팅 효과 - 조정 레이어로 구현
-                var vignette = layer.Effects.addProperty("ADBE Radial Wipe");
-                // 심플하게 CC Vignette 사용
-                var ccVignette = layer.Effects.addProperty("CC Vignette");
-                ccVignette.property(1).setValue(effect.params.amount || 50);
-                break;
-                
-            case "grain":
-                var grain = layer.Effects.addProperty("ADBE Noise2");
-                grain.property("ADBE Noise2-0001").setValue(effect.params.amount || 5);
-                break;
-                
-            case "light_sweep":
-                var sweep = layer.Effects.addProperty("CC Light Sweep");
-                sweep.property(1).setValueAtTime(effectStart, -100);
-                sweep.property(1).setValueAtTime(
-                    effectStart + (effect.end_time - effect.start_time || 1.5), 
-                    layer.source.width + 100
-                );
-                sweep.property(5).setValue(effect.params.width || 200);
-                sweep.property(6).setValue(effect.params.intensity || 0.5);
-                break;
-                
-            case "color_correction":
-                var cc = layer.Effects.addProperty("ADBE CurvesCustom");
-                // 밝기/대비 기본 보정
-                break;
-                
-            case "lens_flare":
-                var flare = layer.Effects.addProperty("ADBE Lens Flare");
-                flare.property("ADBE Lens Flare-0001").setValue(effect.params.brightness || 100);
-                flare.property("ADBE Lens Flare-0002").setValue(effect.params.type || 2);
-                break;
+
+        try {
+            switch (effect.type) {
+                case "drop_shadow":
+                    var ds = layer.Effects.addProperty("ADBE Drop Shadow");
+                    safeSetValue(ds.property("ADBE Drop Shadow-0001"), Number(p.opacity || 0.5) * 255);
+                    safeSetValue(ds.property("ADBE Drop Shadow-0002"), Number(p.direction || p.angle || 135));
+                    safeSetValue(ds.property("ADBE Drop Shadow-0003"), Number(p.distance || 10));
+                    safeSetValue(ds.property("ADBE Drop Shadow-0004"), Number(p.softness || 10));
+                    break;
+
+                case "glow":
+                    var glow = layer.Effects.addProperty("ADBE Glo2");
+                    safeSetValue(glow.property("ADBE Glo2-0001"), Number(p.threshold || 60));
+                    safeSetValue(glow.property("ADBE Glo2-0002"), Number(p.radius || 30));
+                    safeSetValue(glow.property("ADBE Glo2-0003"), Number(p.intensity || 1));
+                    break;
+
+                case "blur":
+                case "gaussian_blur":
+                    var blur = layer.Effects.addProperty("ADBE Gaussian Blur 2");
+                    safeSetValue(blur.property("ADBE Gaussian Blur 2-0001"), Number(p.amount || 10));
+                    break;
+
+                case "vignette":
+                    try {
+                        var ccVignette = layer.Effects.addProperty("CC Vignette");
+                        safeSetValue(ccVignette.property(1), Number(p.amount || 50));
+                    } catch(ve) {}
+                    break;
+
+                case "grain":
+                    var grain = layer.Effects.addProperty("ADBE Noise2");
+                    safeSetValue(grain.property("ADBE Noise2-0001"), Number(p.amount || 5));
+                    break;
+
+                case "light_sweep":
+                    try {
+                        var sweep = layer.Effects.addProperty("CC Light Sweep");
+                        var sweepDur = (effect.end_time || effectStart + 1.5) - (effect.start_time || 0);
+                        sweep.property(1).setValueAtTime(effectStart, -100);
+                        sweep.property(1).setValueAtTime(effectStart + Math.max(sweepDur, 0.5), 1200);
+                        safeSetValue(sweep.property(5), Number(p.width || 200));
+                        safeSetValue(sweep.property(6), Number(p.intensity || p.speed || 0.5));
+                    } catch(se) {}
+                    break;
+
+                case "color_correction":
+                    try {
+                        var cc = layer.Effects.addProperty("ADBE CurvesCustom");
+                    } catch(ce) {}
+                    break;
+
+                case "lens_flare":
+                    var flare = layer.Effects.addProperty("ADBE Lens Flare");
+                    safeSetValue(flare.property("ADBE Lens Flare-0001"), Number(p.brightness || p.intensity || 100));
+                    safeSetValue(flare.property("ADBE Lens Flare-0002"), Number(p.type || 2));
+                    break;
+            }
+        } catch(effectErr) {
+            // 개별 이펙트 실패 시 무시하고 다음으로
         }
     }
 }
