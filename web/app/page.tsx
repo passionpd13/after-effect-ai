@@ -24,11 +24,11 @@ export default function Home() {
               애니메이션, 이펙트, 전환 효과가 적용된 영상을 만들어냅니다.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link href="/editor" className="btn-primary text-lg px-8 py-4 inline-block text-center">
-                에디터 시작하기
+              <Link href="/ai" className="btn-primary text-lg px-8 py-4 inline-block text-center">
+                AI 자동 생성 시작하기
               </Link>
-              <Link href="/docs" className="btn-secondary text-lg px-8 py-4 inline-block text-center">
-                사용 방법 보기
+              <Link href="/editor" className="btn-secondary text-lg px-8 py-4 inline-block text-center">
+                수동 에디터
               </Link>
             </div>
           </div>
@@ -40,10 +40,10 @@ export default function Home() {
             <h2 className="text-3xl font-bold text-center mb-12">작업 흐름</h2>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               {[
-                { step: "01", title: "스토리보드 준비", desc: "이미지와 소스 파일을 준비합니다" },
-                { step: "02", title: "JSON 생성", desc: "에디터에서 시각적으로 구성하거나 Claude가 자동 생성" },
-                { step: "03", title: "AE 실행", desc: "ae_auto_pipeline.jsx 스크립트를 실행합니다" },
-                { step: "04", title: "영상 완성", desc: "자동으로 컴포지션, 레이어, 애니메이션 생성" },
+                { step: "01", title: "이미지 업로드", desc: "스토리보드와 소스 이미지를 업로드합니다" },
+                { step: "02", title: "AI 자동 분석", desc: "AI가 객체를 분석하고 고퀄리티 모션그래픽을 설계합니다" },
+                { step: "03", title: "ZIP 다운로드", desc: "JSON + 스크립트 + 이미지가 한 번에 묶여 다운로드됩니다" },
+                { step: "04", title: "AE에서 완성", desc: "스크립트 실행 한 번으로 3D 카메라, 객체 애니메이션 자동 생성" },
               ].map((item) => (
                 <div key={item.step} className="card-glass p-6 text-center relative group">
                   <div className="text-4xl font-bold text-ae-highlight/20 mb-3">
