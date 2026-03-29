@@ -37,24 +37,50 @@ export default function AiModePage() {
   // 배경 제거 진행률
   const [bgRemoveProgress, setBgRemoveProgress] = useState({ done: 0, total: 0 });
 
+  // 파일명을 AE 호환 영문으로 자동 변환
+  const sanitizeFileName = useCallback((name: string, index: number): string => {
+    // 확장자 분리
+    const lastDot = name.lastIndexOf(".");
+    const ext = lastDot >= 0 ? name.slice(lastDot).toLowerCase() : ".png";
+    const base = lastDot >= 0 ? name.slice(0, lastDot) : name;
+
+    // 영문/숫자/밑줄만 남기기
+    const cleaned = base
+      .replace(/[가-힣ㄱ-ㅎㅏ-ㅣ]/g, "") // 한글 제거
+      .replace(/\s+/g, "_")              // 공백 → 밑줄
+      .replace(/[^a-zA-Z0-9_\-]/g, "")   // 특수문자 제거
+      .replace(/_+/g, "_")               // 연속 밑줄 정리
+      .replace(/^_|_$/g, "");             // 앞뒤 밑줄 제거
+
+    // 영문이 아무것도 안 남으면 image_N으로 대체
+    const safeName = cleaned || `image_${index + 1}`;
+    return safeName + ext;
+  }, []);
+
   const handleImageUpload = useCallback((files: FileList | null) => {
     if (!files) return;
     const newImages: Promise<UploadedImage>[] = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (!file.type.startsWith("image/")) continue;
+      const safeIndex = images.length + i;
       newImages.push(
         new Promise((resolve) => {
           const reader = new FileReader();
           reader.onload = (e) => {
-            resolve({ file, dataUrl: e.target?.result as string, name: file.name });
+            const safeName = sanitizeFileName(file.name, safeIndex);
+            resolve({
+              file,
+              dataUrl: e.target?.result as string,
+              name: safeName,  // AE 호환 영문 파일명
+            });
           };
           reader.readAsDataURL(file);
         })
       );
     }
     Promise.all(newImages).then((imgs) => setImages((prev) => [...prev, ...imgs]));
-  }, []);
+  }, [images.length, sanitizeFileName]);
 
   const removeImage = (index: number) => {
     setImages((prev) => prev.filter((_, i) => i !== index));
@@ -86,7 +112,7 @@ export default function AiModePage() {
           updated[i] = {
             ...updated[i],
             cutoutDataUrl: data.image_base64,
-            cutoutName: data.cutout_name,
+            cutoutName: updated[i].name.replace(/\.[^.]+$/, "_cutout.png"),
             isProcessing: false,
           };
         } else {
