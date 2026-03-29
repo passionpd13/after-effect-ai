@@ -37,26 +37,41 @@ function loadJSON(filePath) {
 function createProject(data) {
     var settings = data.settings;
     var project = app.project;
-    
+
+    // total_duration이 없거나 0이면 씬 합계로 계산
+    var totalDur = settings.total_duration;
+    if (!totalDur || totalDur <= 0) {
+        totalDur = 0;
+        for (var i = 0; i < data.scenes.length; i++) {
+            totalDur += data.scenes[i].duration || 4;
+        }
+    }
+    if (totalDur <= 0) totalDur = 10; // 최소 10초 보장
+
+    var compWidth = settings.width || 1080;
+    var compHeight = settings.height || 1920;
+    var compFps = settings.fps || 30;
+    var compName = data.project.name || "main_comp";
+
     // 메인 컴포지션 생성
     var comp = project.items.addComp(
-        data.project.name,           // 이름
-        settings.width,              // 너비
-        settings.height,             // 높이
-        1,                           // 픽셀 비율
-        settings.total_duration,     // 총 길이 (초)
-        settings.fps                 // FPS
+        compName,       // 이름
+        compWidth,      // 너비
+        compHeight,     // 높이
+        1,              // 픽셀 비율
+        totalDur,       // 총 길이 (초)
+        compFps         // FPS
     );
     
     // 배경색 설정
-    var bg = settings.background_color;
+    var bg = settings.background_color || [0.85, 0.85, 0.85];
     var bgSolid = comp.layers.addSolid(
-        bg, 
-        "Background", 
-        settings.width, 
-        settings.height, 
-        1, 
-        settings.total_duration
+        bg,
+        "Background",
+        compWidth,
+        compHeight,
+        1,
+        totalDur
     );
     bgSolid.locked = true;
     
