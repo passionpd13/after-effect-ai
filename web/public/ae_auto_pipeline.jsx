@@ -657,7 +657,7 @@ function applyDropShadow(layer, shadowConfig) {
 // ============================================================
 // [9] 오디오 처리
 // ============================================================
-function handleAudio(comp, data) {
+function handleAudio(comp, data, projectFolder) {
     // BGM 추가
     if (data.audio_global && data.audio_global.bgm) {
         var bgmFile = new File(projectFolder + "/" + data.audio_global.bgm);
@@ -846,7 +846,7 @@ function main() {
         }
         
         // 4. 오디오 처리
-        handleAudio(comp, data);
+        handleAudio(comp, data, projectFolder);
         
         // 5. 렌더 큐에 추가
         if (data.render) {
