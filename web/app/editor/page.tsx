@@ -12,6 +12,19 @@ import { createDefaultStoryboard, createDefaultScene } from "@/lib/default-data"
 
 type Tab = "scenes" | "settings" | "json";
 
+function sanitizeFileName(name: string): string {
+  const lastDot = name.lastIndexOf(".");
+  const ext = lastDot >= 0 ? name.slice(lastDot).toLowerCase() : ".png";
+  const base = lastDot >= 0 ? name.slice(0, lastDot) : name;
+  const cleaned = base
+    .replace(/[가-힣ㄱ-ㅎㅏ-ㅣ]/g, "")
+    .replace(/\s+/g, "_")
+    .replace(/[^a-zA-Z0-9_\-]/g, "")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "");
+  return (cleaned || "image") + ext;
+}
+
 export default function EditorPage() {
   const [data, setData] = useState<Storyboard>(createDefaultStoryboard());
   const [activeScene, setActiveScene] = useState(0);
@@ -57,13 +70,14 @@ export default function EditorPage() {
       reader.onload = (e) => {
         const dataUrl = e.target?.result as string;
         setSceneImages((prev) => ({ ...prev, [sceneId]: dataUrl }));
-        // Auto-fill filename if empty
+        // Auto-fill filename (sanitized for AE)
         const scene = data.scenes.find((s) => s.id === sceneId);
         if (scene && !scene.image.file) {
           const idx = data.scenes.findIndex((s) => s.id === sceneId);
+          const safeName = sanitizeFileName(file.name);
           updateScene(idx, {
             ...scene,
-            image: { ...scene.image, file: file.name },
+            image: { ...scene.image, file: safeName },
           });
         }
       };
