@@ -1,0 +1,385 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AE Animation Studio - Storyboard Schema v2",
+  "description": "고급 모션그래픽 자동화를 위한 스키마. 씬당 다중 객체, 3D 카메라, 독립 애니메이션 지원",
+  "version": "2.0",
+  "type": "object",
+  "required": ["project", "settings", "scenes"],
+  "properties": {
+    "project": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "description": { "type": "string" },
+        "style_preset": {
+          "type": "string",
+          "enum": ["documentary", "news", "cinematic", "minimal", "bold", "epic", "tech"],
+          "default": "cinematic",
+          "description": "영상 전체 톤앤매너 프리셋"
+        },
+        "version": { "type": "string", "default": "2.0" }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "properties": {
+        "width": { "type": "integer", "default": 1080 },
+        "height": { "type": "integer", "default": 1920 },
+        "fps": { "type": "integer", "default": 30 },
+        "format": { "type": "string", "enum": ["vertical", "horizontal", "square"], "default": "vertical" },
+        "background": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "enum": ["solid", "gradient", "image"], "default": "gradient" },
+            "color": { "type": "array", "items": { "type": "number" }, "default": [0.08, 0.08, 0.12] },
+            "gradient": {
+              "type": "object",
+              "properties": {
+                "colors": { "type": "array", "items": { "type": "array" } },
+                "angle": { "type": "number", "default": 180 }
+              }
+            }
+          }
+        },
+        "total_duration": { "type": "number" }
+      }
+    },
+    "global_style": {
+      "type": "object",
+      "properties": {
+        "font_family": { "type": "string", "default": "Noto Sans KR" },
+        "color_palette": {
+          "type": "array",
+          "items": { "type": "array", "items": { "type": "number" } },
+          "description": "영상 전체에서 사용되는 주요 색상 팔레트 (RGB 0-1)"
+        },
+        "text_style": {
+          "type": "object",
+          "properties": {
+            "title": { "$ref": "#/definitions/text_style_def" },
+            "subtitle": { "$ref": "#/definitions/text_style_def" },
+            "body": { "$ref": "#/definitions/text_style_def" },
+            "accent": { "$ref": "#/definitions/text_style_def" }
+          }
+        }
+      }
+    },
+
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "duration", "layers"],
+        "properties": {
+          "id": { "type": "integer" },
+          "duration": { "type": "number", "minimum": 0.5, "maximum": 60 },
+          "description": { "type": "string", "description": "AI가 이 씬의 의도를 설명" },
+
+          "background": {
+            "type": "object",
+            "description": "씬별 배경 오버라이드",
+            "properties": {
+              "type": { "type": "string", "enum": ["solid", "gradient", "image", "inherit"] },
+              "color": { "type": "array" },
+              "image": { "type": "string" },
+              "blur": { "type": "number", "default": 0, "description": "배경 블러 강도" }
+            }
+          },
+
+          "camera": {
+            "type": "object",
+            "description": "3D 카메라 설정 - 깊이감과 시점 변화",
+            "properties": {
+              "enabled": { "type": "boolean", "default": false },
+              "type": {
+                "type": "string",
+                "enum": ["static", "zoom_through", "orbit", "dolly", "crane", "parallax_scroll"],
+                "default": "static"
+              },
+              "start_position": { "$ref": "#/definitions/position_3d" },
+              "end_position": { "$ref": "#/definitions/position_3d" },
+              "focal_length": { "type": "number", "default": 50 },
+              "depth_of_field": { "type": "boolean", "default": false },
+              "easing": { "type": "string", "default": "ease_in_out" }
+            }
+          },
+
+          "layers": {
+            "type": "array",
+            "description": "씬 내 모든 레이어 (순서 = 위에서 아래)",
+            "items": {
+              "type": "object",
+              "required": ["id", "type"],
+              "properties": {
+                "id": { "type": "string" },
+                "type": {
+                  "type": "string",
+                  "enum": ["image", "text", "shape", "solid", "null_control"]
+                },
+                "name": { "type": "string" },
+                "visible": { "type": "boolean", "default": true },
+                "three_d": { "type": "boolean", "default": false, "description": "3D 레이어 여부" },
+                "parent": { "type": "string", "description": "부모 레이어 id (계층 구조)" },
+
+                "transform": {
+                  "type": "object",
+                  "description": "초기 위치/크기/회전",
+                  "properties": {
+                    "position": { "$ref": "#/definitions/position_2d" },
+                    "anchor": { "$ref": "#/definitions/position_2d" },
+                    "scale": { "type": "array", "items": { "type": "number" }, "default": [100, 100] },
+                    "rotation": { "type": "number", "default": 0 },
+                    "opacity": { "type": "number", "default": 100, "minimum": 0, "maximum": 100 },
+                    "z_position": { "type": "number", "default": 0, "description": "3D 깊이 (Z축)" }
+                  }
+                },
+
+                "image_source": {
+                  "type": "object",
+                  "description": "이미지 레이어 전용",
+                  "properties": {
+                    "file": { "type": "string" },
+                    "fit_mode": { "type": "string", "enum": ["cover", "contain", "stretch", "original", "fit_width", "fit_height"] },
+                    "crop": {
+                      "type": "object",
+                      "description": "이미지에서 특정 영역만 사용 (0~1 비율)",
+                      "properties": {
+                        "top": { "type": "number" }, "left": { "type": "number" },
+                        "width": { "type": "number" }, "height": { "type": "number" }
+                      }
+                    }
+                  }
+                },
+
+                "text_content": {
+                  "type": "object",
+                  "description": "텍스트 레이어 전용",
+                  "properties": {
+                    "text": { "type": "string" },
+                    "style": { "type": "string", "enum": ["title", "subtitle", "body", "accent"], "default": "title" },
+                    "font_size": { "type": "number" },
+                    "font_weight": { "type": "string", "enum": ["regular", "bold", "black"], "default": "bold" },
+                    "color": { "type": "array", "items": { "type": "number" } },
+                    "alignment": { "type": "string", "enum": ["left", "center", "right"], "default": "center" },
+                    "stroke": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": { "type": "boolean" },
+                        "color": { "type": "array" },
+                        "width": { "type": "number" }
+                      }
+                    },
+                    "shadow": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": { "type": "boolean" },
+                        "color": { "type": "array" },
+                        "distance": { "type": "number" },
+                        "softness": { "type": "number" }
+                      }
+                    }
+                  }
+                },
+
+                "shape_content": {
+                  "type": "object",
+                  "description": "도형 레이어 전용 - 화살표, 원, 선, 밑줄 등",
+                  "properties": {
+                    "shape_type": {
+                      "type": "string",
+                      "enum": ["arrow", "line", "circle", "rectangle", "underline", "bracket", "connector", "highlight_box"]
+                    },
+                    "color": { "type": "array", "items": { "type": "number" } },
+                    "stroke_width": { "type": "number", "default": 4 },
+                    "fill": { "type": "boolean", "default": false },
+                    "start_point": { "$ref": "#/definitions/position_2d" },
+                    "end_point": { "$ref": "#/definitions/position_2d" },
+                    "size": { "type": "array", "items": { "type": "number" } }
+                  }
+                },
+
+                "entrance": {
+                  "type": "object",
+                  "description": "레이어 등장 애니메이션",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "none", "fade_in", "slide_from_left", "slide_from_right",
+                        "slide_from_top", "slide_from_bottom", "scale_up", "scale_down",
+                        "pop", "bounce_in", "spin_in", "blur_in", "wipe_in",
+                        "typewriter", "letter_by_letter", "word_by_word",
+                        "fly_in_3d", "flip_in", "swing_in"
+                      ],
+                      "default": "fade_in"
+                    },
+                    "delay": { "type": "number", "default": 0, "description": "씬 시작 후 대기 시간" },
+                    "duration": { "type": "number", "default": 0.8 },
+                    "easing": { "type": "string", "default": "ease_out" },
+                    "direction": { "type": "number", "description": "각도 (slide/fly 방향)" },
+                    "distance": { "type": "number", "description": "이동 거리 (px)" }
+                  }
+                },
+
+                "animation": {
+                  "type": "object",
+                  "description": "지속 애니메이션 (등장 후 계속 적용)",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "none", "float", "pulse", "shake", "breathe",
+                        "rotate_slow", "bob", "sway", "orbit",
+                        "zoom_in", "zoom_out", "pan_left", "pan_right", "pan_up", "pan_down",
+                        "ken_burns", "parallax",
+                        "path_move", "elastic_bounce"
+                      ],
+                      "default": "none"
+                    },
+                    "intensity": { "type": "string", "enum": ["subtle", "normal", "strong"], "default": "normal" },
+                    "speed": { "type": "number", "default": 1, "description": "애니메이션 속도 배율" },
+                    "loop": { "type": "boolean", "default": false },
+                    "path": {
+                      "type": "array",
+                      "description": "path_move용 경유점 배열",
+                      "items": { "$ref": "#/definitions/position_2d" }
+                    }
+                  }
+                },
+
+                "exit": {
+                  "type": "object",
+                  "description": "레이어 퇴장 애니메이션",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "none", "fade_out", "slide_to_left", "slide_to_right",
+                        "slide_to_top", "slide_to_bottom", "scale_down", "scale_up",
+                        "pop_out", "blur_out", "flip_out", "spin_out"
+                      ],
+                      "default": "none"
+                    },
+                    "time_before_end": { "type": "number", "default": 0.5, "description": "씬 끝나기 N초 전 시작" },
+                    "duration": { "type": "number", "default": 0.5 },
+                    "easing": { "type": "string", "default": "ease_in" }
+                  }
+                },
+
+                "effects": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["type"],
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "drop_shadow", "glow", "blur", "gaussian_blur",
+                          "vignette", "grain", "chromatic_aberration",
+                          "light_sweep", "lens_flare",
+                          "color_correction", "tint", "hue_shift",
+                          "border", "rounded_corners", "reflection",
+                          "distort_wave", "glitch", "noise_dissolve"
+                        ]
+                      },
+                      "params": { "type": "object" },
+                      "animate": {
+                        "type": "object",
+                        "description": "이펙트 파라미터 애니메이션",
+                        "properties": {
+                          "property": { "type": "string" },
+                          "from": { "type": "number" },
+                          "to": { "type": "number" },
+                          "duration": { "type": "number" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+
+          "transition_to_next": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "none", "cut", "fade", "crossfade", "morph",
+                  "slide_left", "slide_right", "slide_up", "slide_down",
+                  "zoom_transition", "wipe_left", "wipe_right", "wipe_circle",
+                  "dissolve", "blur_transition", "flip", "cube_rotate",
+                  "glitch_transition", "whip_pan", "light_leak"
+                ],
+                "default": "crossfade"
+              },
+              "duration": { "type": "number", "default": 1 },
+              "easing": { "type": "string", "default": "ease_in_out" }
+            }
+          },
+
+          "audio": {
+            "type": "object",
+            "properties": {
+              "narration": { "type": "string" },
+              "sfx": { "type": "string" },
+              "sfx_volume": { "type": "number", "default": 1.0 }
+            }
+          }
+        }
+      }
+    },
+
+    "audio_global": {
+      "type": "object",
+      "properties": {
+        "bgm": { "type": "string" },
+        "bgm_volume": { "type": "number", "default": 0.3 },
+        "bgm_fade_in": { "type": "number", "default": 2 },
+        "bgm_fade_out": { "type": "number", "default": 2 }
+      }
+    },
+
+    "render": {
+      "type": "object",
+      "properties": {
+        "output_format": { "type": "string", "default": "mp4" },
+        "codec": { "type": "string", "default": "h264" },
+        "quality": { "type": "string", "default": "high" },
+        "output_filename": { "type": "string" }
+      }
+    }
+  },
+
+  "definitions": {
+    "position_2d": {
+      "type": "object",
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      }
+    },
+    "position_3d": {
+      "type": "object",
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" }
+      }
+    },
+    "text_style_def": {
+      "type": "object",
+      "properties": {
+        "font_size": { "type": "number" },
+        "font_weight": { "type": "string" },
+        "color": { "type": "array", "items": { "type": "number" } },
+        "stroke_color": { "type": "array", "items": { "type": "number" } },
+        "stroke_width": { "type": "number" }
+      }
+    }
+  }
+}
