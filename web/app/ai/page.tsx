@@ -349,38 +349,63 @@ export default function AiModePage() {
       square: "정사각형 (1080x1080)",
     };
 
-    const estTotal = sceneDuration * images.length;
+    const estTotal = sceneDuration * Math.max(images.length, 2);
 
-    return `다음 이미지들로 고퀄리티 모션그래픽 영상용 JSON을 생성해주세요.
+    return `다음 이미지들로 ancrid 수준의 고퀄리티 모션그래픽 영상용 JSON을 생성해주세요.
 
-## 프로젝트 정보
+## 프로젝트 설정
 - 스타일: ${style}
 - 포맷: ${formatMap[format] || formatMap.vertical}
 - FPS: ${fps}
-- 씬 1개당 길이: ${sceneDuration}초 (각 씬의 duration을 ${sceneDuration}으로 설정)
-- 이미지 ${images.length}장 → 씬 ${images.length}개 → 총 약 ${estTotal}초
-- 설명: ${description || "(이미지를 분석해서 자동으로 판단해주세요)"}
+- 씬당 길이: 약 ${sceneDuration}초
+- 총 영상 길이: 약 ${estTotal}초
+- settings: width/height/fps/total_duration 필수 포함
+${description ? `- 설명: ${description}` : "- 이미지를 분석해서 내용에 맞게 자동 판단해주세요"}
 
-## 업로드된 이미지 파일들 (이 파일명만 사용하세요!)
+## 사용 가능한 이미지 파일 (이 파일명만 사용!)
 ${imageList}
+${hasCutoutsAvailable ? "※ _cutout.png 파일은 배경 제거된 객체입니다" : ""}
 
-## 중요: 파일명 규칙
-- 위 목록에 있는 파일명만 정확히 사용하세요
-- 존재하지 않는 파일명(예: _cutout.png)을 만들어내지 마세요
-${hasCutoutsAvailable ? "- _cutout.png 파일이 있는 경우 배경 제거된 객체로 독립 레이어 사용 가능" : "- 배경 제거 파일이 없으므로 원본 이미지만 사용하세요"}
+## 핵심: 다양한 연출을 해주세요!
 
-## 요구사항
-1. 스키마 정의 없이 데이터 JSON만 출력 ($schema, definitions, properties 등 포함 금지)
-2. 반드시 project, settings (width, height, fps, total_duration), scenes 포함
-3. settings.total_duration = ${estTotal}, 각 씬의 duration = ${sceneDuration}
-4. 각 이미지를 배경으로 깔고, 위에 텍스트/도형 오버레이로 고퀄 연출
-5. 같은 이미지를 여러 레이어에서 다른 scale/position으로 재사용 가능
-6. 3D 카메라를 활용하여 깊이감
-7. 요소들은 순차적으로 등장 (0.2~0.5초 간격)
-8. ancrid 수준의 고퀄리티 모션그래픽
-9. 텍스트는 한국어로 작성
-10. 각 레이어의 entrance delay, duration 등 세부 타이밍은 AI가 자유롭게 결정
-10. settings.fps는 ${fps}, settings.format은 "${format}"으로 설정
+### 이미지 연출 규칙
+- 한 씬에 여러 이미지를 동시에 배치 가능 (예: 배경 + 인물A + 인물B 같은 씬에)
+- 같은 이미지를 여러 씬에서 재사용 가능 (다른 위치/크기/효과로)
+- 같은 이미지를 한 씬에서 여러 레이어로 사용 가능 (다른 crop/scale로)
+- 이미지 순서는 자유롭게 (1→2→3 순서가 아니어도 됨)
+- 이미지를 다양한 위치에 배치 (중앙만 X → 좌상단, 우하단, 대각선 등)
+- 이미지 크기도 다양하게 (전체 배경, 작은 썸네일, PIP 등)
+
+### 필수 연출 요소 (매 씬마다 최소 3개 이상)
+- 화살표(arrow): 방향 지시, 강조, 연결선 등 다양한 각도와 위치
+- 강조 박스(highlight_box/rectangle): 중요 영역 표시
+- 밑줄(underline/line): 텍스트 강조
+- 원(circle): 영역 강조, 포인트 표시
+- 텍스트: 제목, 부제, 설명, 숫자, 라벨 등 여러 텍스트 레이어
+- 이펙트: glow, drop_shadow, vignette, light_sweep 등
+
+### 다양한 레이아웃 사용
+- 전체화면 1장 + 오버레이
+- 좌우 분할 비교 (이미지A 왼쪽 + 이미지B 오른쪽)
+- 메인 이미지 크게 + 작은 이미지 PIP (Picture in Picture)
+- 여러 이미지 격자/타일 배치
+- 이미지 위에 도형/화살표/텍스트가 가리키는 구성
+- 배경 블러 + 전경 선명 (깊이감)
+
+### 모션 다양성
+- 레이어마다 다른 entrance 사용 (전부 fade_in X)
+- 다양한 방향에서 등장 (왼쪽, 오른쪽, 위, 아래, 팝, 바운스)
+- 레이어마다 delay를 다르게 (0.1~2초 범위로 어긋나게)
+- 지속 애니메이션도 다양하게 (float, pulse, bob, sway, zoom_in 등)
+- 화살표는 wipe_in으로 그려지듯이 등장
+- 텍스트는 typewriter, pop, slide 등 다양하게
+
+## JSON 형식 규칙
+1. 스키마 정의 없이 데이터 JSON만 ($schema, definitions, properties 포함 금지)
+2. project, settings, scenes 필수
+3. settings.format="${format}", settings.fps=${fps}, settings.total_duration=${estTotal}
+4. 텍스트는 한국어
+5. 위 파일명만 정확히 사용 (존재하지 않는 파일명 사용 금지)
 
 JSON만 출력해주세요.`;
   };
