@@ -4,6 +4,6 @@
   "scripts": {
     "install": "cd web && npm install",
     "build": "cd web && npm run build && cp -r .next/static .next/standalone/.next/static && cp -r public .next/standalone/public",
-    "start": "cd web && node .next/standalone/server.js"
+    "start": "HOSTNAME=0.0.0.0 PORT=${PORT:-3000} node web/.next/standalone/server.js"
   }
 }
