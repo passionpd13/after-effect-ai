@@ -79,6 +79,10 @@ export async function POST(req: NextRequest) {
       images: { name: string; data_url: string; is_cutout?: boolean }[];
       style: string;
       description: string;
+      total_duration: number;
+      scene_duration: number;
+      format: string;
+      fps: number;
     } = body;
 
     if (!api_key) {
@@ -121,10 +125,24 @@ export async function POST(req: NextRequest) {
       return `- ${img.name}${tag}`;
     }).join("\n");
 
+    const formatMap: Record<string, string> = {
+      vertical: "세로형 (1080x1920)",
+      horizontal: "가로형 (1920x1080)",
+      square: "정사각형 (1080x1080)",
+    };
+    const fmt = body.format || "vertical";
+    const dur = body.total_duration || 20;
+    const sDur = body.scene_duration || 5;
+    const fpsVal = body.fps || 30;
+
     const userMessage = `다음 이미지들로 고퀄리티 모션그래픽 JSON을 생성해주세요.
 
 스타일: ${style}
-포맷: 세로형 (1080x1920)
+포맷: ${formatMap[fmt] || formatMap.vertical}
+FPS: ${fpsVal}
+전체 영상 길이: 약 ${dur}초 (settings.total_duration = ${dur})
+씬당 평균 길이: ${sDur}초
+예상 씬 수: 약 ${Math.round(dur / sDur)}개
 ${description ? `설명: ${description}` : "이미지를 분석하여 자동으로 판단해주세요."}
 
 업로드된 파일:

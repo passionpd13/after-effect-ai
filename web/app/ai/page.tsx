@@ -17,6 +17,12 @@ export default function AiModePage() {
   const [images, setImages] = useState<UploadedImage[]>([]);
   const [description, setDescription] = useState("");
   const [style, setStyle] = useState("cinematic");
+
+  // 시간 설정
+  const [totalDuration, setTotalDuration] = useState(20);
+  const [sceneDuration, setSceneDuration] = useState(5);
+  const [format, setFormat] = useState("vertical");
+  const [fps, setFps] = useState(30);
   const [generatedJson, setGeneratedJson] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [copyPromptDone, setCopyPromptDone] = useState(false);
@@ -124,6 +130,10 @@ export default function AiModePage() {
           images: allImages,
           style,
           description,
+          total_duration: totalDuration,
+          scene_duration: sceneDuration,
+          format,
+          fps,
         }),
       });
       const data = await res.json();
@@ -148,11 +158,20 @@ export default function AiModePage() {
       return line;
     }).join("\n");
 
+    const formatMap: Record<string, string> = {
+      vertical: "세로형 (1080x1920)",
+      horizontal: "가로형 (1920x1080)",
+      square: "정사각형 (1080x1080)",
+    };
+
     return `다음 이미지들로 고퀄리티 모션그래픽 영상용 JSON을 생성해주세요.
 
 ## 프로젝트 정보
 - 스타일: ${style}
-- 포맷: 세로형 (1080x1920)
+- 포맷: ${formatMap[format] || formatMap.vertical}
+- FPS: ${fps}
+- 전체 영상 길이: 약 ${totalDuration}초
+- 씬당 평균 길이: ${sceneDuration}초
 - 설명: ${description || "(이미지를 분석해서 자동으로 판단해주세요)"}
 
 ## 업로드된 이미지 파일들
@@ -167,6 +186,8 @@ ${imageList}
 6. 요소들은 순차적으로 등장 (0.2~0.5초 간격)
 7. ancrid 수준의 고퀄리티 모션그래픽
 8. 텍스트는 한국어로 작성
+9. settings.total_duration은 반드시 ${totalDuration}으로 설정
+10. settings.fps는 ${fps}, settings.format은 "${format}"으로 설정
 
 JSON만 출력해주세요.`;
   };
@@ -404,6 +425,70 @@ JSON만 출력해주세요.`;
                     <div className="text-[9px] text-white/40 mt-0.5">{s.desc}</div>
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {/* Time & Format Settings */}
+            <div className="card-glass p-5">
+              <h2 className="text-base font-bold mb-3">시간 / 포맷 설정</h2>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-white/50">전체 영상 길이</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min={5}
+                      max={120}
+                      step={5}
+                      value={totalDuration}
+                      onChange={(e) => setTotalDuration(parseInt(e.target.value))}
+                      className="flex-1 accent-ae-highlight"
+                    />
+                    <span className="text-sm font-bold text-ae-highlight w-12 text-right">{totalDuration}초</span>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-white/50">씬당 평균 길이</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min={2}
+                      max={15}
+                      step={0.5}
+                      value={sceneDuration}
+                      onChange={(e) => setSceneDuration(parseFloat(e.target.value))}
+                      className="flex-1 accent-ae-highlight"
+                    />
+                    <span className="text-sm font-bold text-ae-highlight w-12 text-right">{sceneDuration}초</span>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-white/50">포맷</label>
+                  <select
+                    className="select-field w-full text-sm"
+                    value={format}
+                    onChange={(e) => setFormat(e.target.value)}
+                  >
+                    <option value="vertical" className="bg-ae-dark">세로 (1080x1920)</option>
+                    <option value="horizontal" className="bg-ae-dark">가로 (1920x1080)</option>
+                    <option value="square" className="bg-ae-dark">정사각형 (1080x1080)</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-white/50">FPS</label>
+                  <select
+                    className="select-field w-full text-sm"
+                    value={fps}
+                    onChange={(e) => setFps(parseInt(e.target.value))}
+                  >
+                    <option value={24} className="bg-ae-dark">24 fps (시네마틱)</option>
+                    <option value={30} className="bg-ae-dark">30 fps (기본)</option>
+                    <option value={60} className="bg-ae-dark">60 fps (부드러움)</option>
+                  </select>
+                </div>
+              </div>
+              <div className="mt-3 text-[10px] text-white/30">
+                예상 씬 수: 약 {Math.round(totalDuration / sceneDuration)}개
               </div>
             </div>
 
