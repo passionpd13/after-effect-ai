@@ -152,6 +152,7 @@ export default function AiModePage() {
   const [showApiSettings, setShowApiSettings] = useState(false);
   const [mode, setMode] = useState<Mode>("manual");
   const [aiProvider, setAiProvider] = useState<"gemini" | "anthropic">("gemini");
+  const [geminiModel, setGeminiModel] = useState("gemini-2.5-flash");
 
   // localStorage에서 키 복원
   useEffect(() => {
@@ -163,6 +164,7 @@ export default function AiModePage() {
         if (keys.anthropic) setAnthropicKey(keys.anthropic);
         if (keys.removebg) setRemoveBgKey(keys.removebg);
         if (keys.provider) setAiProvider(keys.provider);
+        if (keys.geminiModel) setGeminiModel(keys.geminiModel);
       }
     } catch {}
   }, []);
@@ -175,9 +177,10 @@ export default function AiModePage() {
         anthropic: anthropicKey,
         removebg: removeBgKey,
         provider: aiProvider,
+        geminiModel: geminiModel,
       }));
     } catch {}
-  }, [geminiKey, anthropicKey, removeBgKey, aiProvider]);
+  }, [geminiKey, anthropicKey, removeBgKey, aiProvider, geminiModel]);
 
   useEffect(() => {
     saveKeys();
@@ -305,6 +308,7 @@ export default function AiModePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           api_key: currentKey,
+          model: aiProvider === "gemini" ? geminiModel : undefined,
           images: allImages,
           style,
           description,
@@ -534,9 +538,19 @@ JSON만 출력해주세요.`;
                       value={geminiKey}
                       onChange={(e) => setGeminiKey(e.target.value)}
                     />
-                    <div className="text-[10px] text-white/30">
+                    <div className="text-[10px] text-white/30 mb-2">
                       Google AI Studio에서 발급 (무료 사용 가능)
                     </div>
+                    <label className="text-xs text-white/50">모델</label>
+                    <select
+                      className="select-field w-full text-sm mt-1"
+                      value={geminiModel}
+                      onChange={(e) => setGeminiModel(e.target.value)}
+                    >
+                      <option value="gemini-2.5-flash" className="bg-ae-dark">Gemini 2.5 Flash (빠름, 무료)</option>
+                      <option value="gemini-2.5-pro" className="bg-ae-dark">Gemini 2.5 Pro (고품질)</option>
+                      <option value="gemini-2.0-flash" className="bg-ae-dark">Gemini 2.0 Flash</option>
+                    </select>
                   </>
                 ) : (
                   <>

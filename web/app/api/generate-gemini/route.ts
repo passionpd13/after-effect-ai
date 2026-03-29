@@ -147,7 +147,8 @@ JSON만 출력해주세요.`,
     });
 
     // Gemini API 호출
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${api_key}`;
+    const model = (body.model as string) || "gemini-2.5-flash";
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${api_key}`;
 
     const response = await fetch(geminiUrl, {
       method: "POST",
@@ -163,7 +164,7 @@ JSON만 출력해주세요.`,
         ],
         generationConfig: {
           temperature: 0.7,
-          maxOutputTokens: 8192,
+          maxOutputTokens: 65536,
           responseMimeType: "application/json",
         },
       }),
@@ -179,14 +180,40 @@ JSON만 출력해주세요.`,
 
     const result = await response.json();
 
+    // 응답 끊김 확인
+    const finishReason = result.candidates?.[0]?.finishReason;
+    if (finishReason === "MAX_TOKENS") {
+      return NextResponse.json(
+        {
+          error: "JSON 생성이 도중에 끊겼습니다 (토큰 한도 초과). 영상 길이를 줄이거나 씬 수를 줄여보세요.",
+          raw: result.candidates?.[0]?.content?.parts?.[0]?.text?.slice(0, 500) || "",
+        },
+        { status: 422 }
+      );
+    }
+
+    // 안전 관련 차단 확인
+    if (finishReason === "SAFETY") {
+      return NextResponse.json(
+        { error: "Gemini 안전 필터에 의해 차단되었습니다. 이미지나 설명을 변경해보세요." },
+        { status: 422 }
+      );
+    }
+
     // 응답에서 JSON 텍스트 추출
     let responseText = "";
     try {
-      responseText =
-        result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      responseText = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
     } catch {
       return NextResponse.json(
         { error: "Gemini 응답 파싱 실패", raw: JSON.stringify(result).slice(0, 500) },
+        { status: 422 }
+      );
+    }
+
+    if (!responseText) {
+      return NextResponse.json(
+        { error: "Gemini가 빈 응답을 반환했습니다", raw: JSON.stringify(result).slice(0, 500) },
         { status: 422 }
       );
     }
@@ -203,7 +230,10 @@ JSON만 출력해주세요.`,
       JSON.parse(jsonStr);
     } catch {
       return NextResponse.json(
-        { error: "Gemini가 유효한 JSON을 생성하지 못했습니다", raw: responseText.slice(0, 1000) },
+        {
+          error: "Gemini가 유효한 JSON을 생성하지 못했습니다. 다시 시도해보세요.",
+          raw: responseText.slice(0, 1000),
+        },
         { status: 422 }
       );
     }
@@ -211,7 +241,7 @@ JSON만 출력해주세요.`,
     return NextResponse.json({
       success: true,
       json: jsonStr,
-      model: "gemini-2.5-flash",
+      model: model,
     });
   } catch (error) {
     return NextResponse.json(
