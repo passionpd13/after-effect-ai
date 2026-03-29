@@ -6,7 +6,7 @@ interface UploadedImage {
   file: File;
   dataUrl: string;
   name: string;
-  imageType: "source" | "storyboard"; // 소스 이미지 or 스토리보드
+  imageType: "source" | "storyboard" | "background"; // 소스 이미지 or 스토리보드 or 배경
   cutoutDataUrl?: string;
   cutoutName?: string;
   isProcessing?: boolean;
@@ -240,10 +240,15 @@ export default function AiModePage() {
   };
 
   const toggleImageType = (index: number) => {
+    const cycle: Record<string, "source" | "storyboard" | "background"> = {
+      source: "background",
+      background: "storyboard",
+      storyboard: "source",
+    };
     setImages((prev) =>
       prev.map((img, i) =>
         i === index
-          ? { ...img, imageType: img.imageType === "source" ? "storyboard" : "source" }
+          ? { ...img, imageType: cycle[img.imageType] || "source" }
           : img
       )
     );
@@ -348,14 +353,16 @@ export default function AiModePage() {
     const hasCutoutsAvailable = images.some((img) => img.cutoutName);
     const storyboards = images.filter((img) => img.imageType === "storyboard");
     const sourceImages = images.filter((img) => img.imageType === "source");
+    const backgrounds = images.filter((img) => img.imageType === "background");
 
-    const storyboardList = storyboards.map((img, i) => `  📋 ${img.name} (스토리보드)`).join("\n");
-    const sourceList = sourceImages.map((img, i) => {
-      let line = `  🖼️ ${img.name} (소스 이미지)`;
-      if (img.cutoutName && img.cutoutDataUrl) line += `\n     ${img.cutoutName} (배경 제거됨)`;
+    const bgList = backgrounds.map((img) => "  🌄 " + img.name + " (배경 이미지)").join("\n");
+    const storyboardList = storyboards.map((img) => "  📋 " + img.name + " (스토리보드)").join("\n");
+    const sourceList = sourceImages.map((img) => {
+      let line = "  🖼️ " + img.name + " (소스 이미지)";
+      if (img.cutoutName && img.cutoutDataUrl) line += "\n     " + img.cutoutName + " (배경 제거됨)";
       return line;
     }).join("\n");
-    const imageList = [storyboardList, sourceList].filter(Boolean).join("\n");
+    const imageList = [bgList, sourceList, storyboardList].filter(Boolean).join("\n");
 
     const formatMap: Record<string, { label: string; w: number; h: number }> = {
       vertical: { label: "9:16 세로", w: 1080, h: 1920 },
@@ -382,11 +389,27 @@ export default function AiModePage() {
       hasCutoutsAvailable ? "※ _cutout.png 파일은 배경 제거된 객체입니다" : "",
     ];
 
+    if (backgrounds.length > 0) {
+      lines.push(
+        "",
+        "## 배경 이미지 사용 규칙",
+        "🌄 표시된 이미지는 배경입니다:",
+        "- 배경 이미지는 씬의 맨 뒤 레이어로 사용 (전체화면 cover)",
+        "- 배경 위에 올라가는 모든 텍스트는 반드시 가독성 확보:",
+        "  * stroke 필수: enabled=true, color=[0,0,0], width=4~6",
+        "  * drop_shadow 이펙트 추가: distance=8~15, softness=15~25",
+        "  * 텍스트 색상은 밝은 색 [1,1,1] 또는 [1,0.9,0.2] 사용",
+        "  * 필요하면 텍스트 뒤에 반투명 rectangle 도형 배치 (opacity=40~60)",
+        "- 배경 이미지에 blur 이펙트(amount=5~10) + vignette 적용 권장",
+        "- 배경 파일은 image_source.file에 사용 가능 (영상 레이어로 사용)"
+      );
+    }
+
     if (storyboards.length > 0) {
       lines.push(
         "",
-        "## 중요: 스토리보드 분석 지시",
-        "표시된 이미지는 스토리보드입니다. 자세히 분석하여:",
+        "## 스토리보드 분석 지시",
+        "📋 표시된 이미지는 스토리보드입니다. 자세히 분석하여:",
         "1. 스토리보드에 그려진 레이아웃/배치를 그대로 따라하세요",
         "2. 화살표가 있으면 해당 방향으로 애니메이션 적용",
         "3. 텍스트가 적혀있으면 그 텍스트를 그 위치에 배치",
@@ -394,7 +417,7 @@ export default function AiModePage() {
         "5. 동작 지시(줌, 회전, 이동)가 있으면 animation/entrance에 반영",
         "6. 번호나 순서가 있으면 씬 순서와 등장 delay에 반영",
         "7. 스토리보드 이미지 자체는 영상에 사용하지 말 것!",
-        "8. 소스 이미지만 영상의 레이어로 사용하세요"
+        "8. 소스/배경 이미지만 영상의 레이어로 사용하세요"
       );
     }
 
@@ -672,6 +695,8 @@ export default function AiModePage() {
                     <div key={i} className={`flex items-center gap-3 rounded-lg p-2 ${
                       img.imageType === "storyboard"
                         ? "bg-ae-purple/10 border border-ae-purple/30"
+                        : img.imageType === "background"
+                        ? "bg-ae-blue/10 border border-ae-blue/30"
                         : "bg-white/5"
                     }`}>
                       <img src={img.dataUrl} alt="" className="w-12 h-12 rounded object-cover flex-shrink-0" />
@@ -683,10 +708,12 @@ export default function AiModePage() {
                           className={`mt-1 text-[10px] px-2 py-0.5 rounded-full transition-all ${
                             img.imageType === "storyboard"
                               ? "bg-ae-purple/30 text-ae-purple border border-ae-purple/40"
+                              : img.imageType === "background"
+                              ? "bg-ae-blue/30 text-ae-blue border border-ae-blue/40"
                               : "bg-white/10 text-white/50 border border-white/10 hover:border-white/30"
                           }`}
                         >
-                          {img.imageType === "storyboard" ? "📋 스토리보드" : "🖼️ 소스 이미지"}
+                          {img.imageType === "storyboard" ? "📋 스토리보드" : img.imageType === "background" ? "🌄 배경" : "🖼️ 소스 이미지"}
                         </button>
                         {img.cutoutDataUrl ? (
                           <div className="flex items-center gap-2 mt-1">
@@ -701,7 +728,7 @@ export default function AiModePage() {
                     </div>
                   ))}
                   <div className="text-[10px] text-white/30 text-center">
-                    클릭하여 이미지 타입 변경: <span className="text-ae-purple">📋 스토리보드</span> = 연출 지시서 / <span className="text-white/50">🖼️ 소스</span> = 영상에 사용할 이미지
+                    클릭하여 타입 변경: <span className="text-white/50">🖼️ 소스</span> → <span className="text-ae-blue">🌄 배경</span> → <span className="text-ae-purple">📋 스토리보드</span>
                   </div>
                 </div>
               )}
