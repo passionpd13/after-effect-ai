@@ -130,9 +130,8 @@ export async function POST(req: NextRequest) {
 스타일: ${style}
 포맷: ${fmt.label} (${fmt.w}x${fmt.h})
 FPS: ${fpsVal}
-전체 영상 길이: 약 ${dur}초 (settings.total_duration = ${dur})
-씬당 평균 길이: ${sDur}초
-예상 씬 수: 약 ${Math.round(dur / sDur)}개
+씬 1개당 길이: ${sDur}초 (각 씬의 duration = ${sDur})
+이미지 ${images.length}장 → 씬 ${images.length}개 → 총 약 ${dur}초
 ${description ? `설명: ${description}` : "이미지를 분석하여 자동으로 판단해주세요."}
 
 사용 가능한 파일 (이 파일명만 사용하세요!):
@@ -141,7 +140,9 @@ ${imageList}
 중요:
 - 위 파일명만 정확히 사용. 존재하지 않는 파일명 사용 금지.
 - 스키마 정의 없이 데이터 JSON만 출력.
-- settings.width=${fmt.w}, settings.height=${fmt.h}, settings.fps=${fpsVal}, settings.total_duration=${dur}
+- settings: width=${fmt.w}, height=${fmt.h}, fps=${fpsVal}, total_duration=${dur}
+- 각 씬의 duration = ${sDur}
+- 각 레이어의 entrance delay, animation 등 세부 타이밍은 자유롭게 결정
 
 JSON만 출력해주세요.`,
     });
