@@ -939,14 +939,27 @@ function processV1(comp, data, projectFolder) {
 // ============================================================
 function processV2(comp, data, projectFolder) {
     var currentTime = 0;
-    var sceneFirstLayers = []; // 각 씬의 첫 번째 이미지 레이어 (전환용)
+    var sceneFirstLayers = [];
+    var log = []; // 처리 로그
+    var errorLog = []; // 에러 로그
+
+    log.push("v2 엔진 시작 | 폴더: " + projectFolder);
+    log.push("씬 수: " + data.scenes.length);
 
     for (var si = 0; si < data.scenes.length; si++) {
         var scene = data.scenes[si];
         var sceneDur = scene.duration || 4;
         var firstImgLayer = null;
 
-        // 레이어를 역순으로 처리 (배열 마지막 = AE에서 맨 위)
+        if (!scene.layers || scene.layers.length === 0) {
+            errorLog.push("씬 " + (si+1) + ": layers 배열이 비어있음");
+            currentTime += sceneDur;
+            sceneFirstLayers.push(null);
+            continue;
+        }
+
+        log.push("--- 씬 " + (si+1) + " (길이: " + sceneDur + "초, 레이어: " + scene.layers.length + "개) ---");
+
         for (var li = scene.layers.length - 1; li >= 0; li--) {
             var layerDef = scene.layers[li];
             if (layerDef.visible === false) continue;
@@ -955,20 +968,23 @@ function processV2(comp, data, projectFolder) {
 
             // --- 이미지 레이어 ---
             if (layerDef.type === "image" && layerDef.image_source && layerDef.image_source.file) {
-                var imgPath = new File(projectFolder + "/" + layerDef.image_source.file);
-                if (imgPath.exists) {
+                var imgFileName = layerDef.image_source.file;
+                var imgPath = new File(projectFolder + "/" + imgFileName);
+                log.push("  이미지: " + imgFileName + " → " + imgPath.fsName);
+
+                if (!imgPath.exists) {
+                    errorLog.push("씬 " + (si+1) + " '" + (layerDef.name || layerDef.id) + "': 파일 없음 → " + imgPath.fsName);
+                } else {
                     try {
                         var importOpts = new ImportOptions(imgPath);
                         var footage = app.project.importFile(importOpts);
                         aeLayer = comp.layers.add(footage);
                         aeLayer.name = layerDef.name || layerDef.id || ("Layer_" + si + "_" + li);
 
-                        // 시간 설정
                         aeLayer.startTime = currentTime;
                         aeLayer.inPoint = currentTime;
                         aeLayer.outPoint = currentTime + sceneDur;
 
-                        // fit_mode
                         var fitMode = layerDef.image_source.fit_mode || "contain";
                         var compW = comp.width;
                         var compH = comp.height;
@@ -981,15 +997,16 @@ function processV2(comp, data, projectFolder) {
                             } else if (fitMode === "stretch") {
                                 scaleX = (compW / srcW) * 100;
                                 scaleY = (compH / srcH) * 100;
-                            } else { // contain
+                            } else {
                                 scaleX = scaleY = Math.min(compW / srcW, compH / srcH) * 100;
                             }
                             aeLayer.property("Scale").setValue([scaleX, scaleY]);
                         }
 
+                        log.push("  → 성공! (" + srcW + "x" + srcH + ")");
                         if (!firstImgLayer) firstImgLayer = aeLayer;
                     } catch (e) {
-                        // 이미지 임포트 실패 - 무시
+                        errorLog.push("씬 " + (si+1) + " '" + (layerDef.name || layerDef.id) + "': 임포트 에러 → " + e.toString());
                     }
                 }
             }
@@ -1286,6 +1303,20 @@ function processV2(comp, data, projectFolder) {
             var transStart = currentTime - (trans.duration || 1);
             applyTransition(comp, sceneFirstLayers[i], sceneFirstLayers[i + 1], trans, transStart);
         }
+    }
+
+    // 처리 결과 로그 표시
+    if (errorLog.length > 0) {
+        var errMsg = "=== v2 처리 결과 ===\n\n";
+        errMsg += "❌ 에러 " + errorLog.length + "개:\n";
+        for (var ei = 0; ei < errorLog.length; ei++) {
+            errMsg += "  • " + errorLog[ei] + "\n";
+        }
+        errMsg += "\n=== 처리 로그 ===\n";
+        for (var li2 = 0; li2 < Math.min(log.length, 30); li2++) {
+            errMsg += log[li2] + "\n";
+        }
+        alert(errMsg);
     }
 }
 
