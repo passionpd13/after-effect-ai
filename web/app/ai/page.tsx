@@ -18,9 +18,8 @@ export default function AiModePage() {
   const [description, setDescription] = useState("");
   const [style, setStyle] = useState("cinematic");
 
-  // 시간 설정
-  const [totalDuration, setTotalDuration] = useState(20);
-  const [sceneDuration, setSceneDuration] = useState(5);
+  // 시간 설정 (씬당 길이만 조절, 나머지는 AI가 알아서)
+  const [sceneDuration, setSceneDuration] = useState(10);
   const [format, setFormat] = useState("vertical");
   const [fps, setFps] = useState(30);
   const [generatedJson, setGeneratedJson] = useState("");
@@ -152,6 +151,7 @@ export default function AiModePage() {
   const [showApiSettings, setShowApiSettings] = useState(false);
   const [mode, setMode] = useState<Mode>("manual");
   const [aiProvider, setAiProvider] = useState<"gemini" | "anthropic">("gemini");
+  const [geminiModel, setGeminiModel] = useState("gemini-2.5-flash");
 
   // localStorage에서 키 복원
   useEffect(() => {
@@ -163,6 +163,7 @@ export default function AiModePage() {
         if (keys.anthropic) setAnthropicKey(keys.anthropic);
         if (keys.removebg) setRemoveBgKey(keys.removebg);
         if (keys.provider) setAiProvider(keys.provider);
+        if (keys.geminiModel) setGeminiModel(keys.geminiModel);
       }
     } catch {}
   }, []);
@@ -175,9 +176,10 @@ export default function AiModePage() {
         anthropic: anthropicKey,
         removebg: removeBgKey,
         provider: aiProvider,
+        geminiModel: geminiModel,
       }));
     } catch {}
-  }, [geminiKey, anthropicKey, removeBgKey, aiProvider]);
+  }, [geminiKey, anthropicKey, removeBgKey, aiProvider, geminiModel]);
 
   useEffect(() => {
     saveKeys();
@@ -305,10 +307,11 @@ export default function AiModePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           api_key: currentKey,
+          model: aiProvider === "gemini" ? geminiModel : undefined,
           images: allImages,
           style,
           description,
-          total_duration: totalDuration,
+          total_duration: sceneDuration * images.length,
           scene_duration: sceneDuration,
           format,
           fps,
@@ -346,35 +349,63 @@ export default function AiModePage() {
       square: "정사각형 (1080x1080)",
     };
 
-    return `다음 이미지들로 고퀄리티 모션그래픽 영상용 JSON을 생성해주세요.
+    const estTotal = sceneDuration * Math.max(images.length, 2);
 
-## 프로젝트 정보
+    return `다음 이미지들로 ancrid 수준의 고퀄리티 모션그래픽 영상용 JSON을 생성해주세요.
+
+## 프로젝트 설정
 - 스타일: ${style}
 - 포맷: ${formatMap[format] || formatMap.vertical}
 - FPS: ${fps}
-- 전체 영상 길이: 약 ${totalDuration}초
-- 씬당 평균 길이: ${sceneDuration}초
-- 설명: ${description || "(이미지를 분석해서 자동으로 판단해주세요)"}
+- 씬당 길이: 약 ${sceneDuration}초
+- 총 영상 길이: 약 ${estTotal}초
+- settings: width/height/fps/total_duration 필수 포함
+${description ? `- 설명: ${description}` : "- 이미지를 분석해서 내용에 맞게 자동 판단해주세요"}
 
-## 업로드된 이미지 파일들 (이 파일명만 사용하세요!)
+## 사용 가능한 이미지 파일 (이 파일명만 사용!)
 ${imageList}
+${hasCutoutsAvailable ? "※ _cutout.png 파일은 배경 제거된 객체입니다" : ""}
 
-## 중요: 파일명 규칙
-- 위 목록에 있는 파일명만 정확히 사용하세요
-- 존재하지 않는 파일명(예: _cutout.png)을 만들어내지 마세요
-${hasCutoutsAvailable ? "- _cutout.png 파일이 있는 경우 배경 제거된 객체로 독립 레이어 사용 가능" : "- 배경 제거 파일이 없으므로 원본 이미지만 사용하세요"}
+## 핵심: 다양한 연출을 해주세요!
 
-## 요구사항
-1. 스키마 정의 없이 데이터 JSON만 출력 ($schema, definitions, properties 등 포함 금지)
-2. 반드시 project, settings (width, height, fps, total_duration), scenes 포함
-3. 각 이미지를 배경으로 깔고, 위에 텍스트/도형 오버레이로 고퀄 연출
-4. 같은 이미지를 여러 레이어에서 다른 scale/position으로 재사용 가능
-5. 3D 카메라를 활용하여 깊이감
-6. 요소들은 순차적으로 등장 (0.2~0.5초 간격)
-7. ancrid 수준의 고퀄리티 모션그래픽
-8. 텍스트는 한국어로 작성
-9. settings.total_duration은 반드시 ${totalDuration}으로 설정
-10. settings.fps는 ${fps}, settings.format은 "${format}"으로 설정
+### 이미지 연출 규칙
+- 한 씬에 여러 이미지를 동시에 배치 가능 (예: 배경 + 인물A + 인물B 같은 씬에)
+- 같은 이미지를 여러 씬에서 재사용 가능 (다른 위치/크기/효과로)
+- 같은 이미지를 한 씬에서 여러 레이어로 사용 가능 (다른 crop/scale로)
+- 이미지 순서는 자유롭게 (1→2→3 순서가 아니어도 됨)
+- 이미지를 다양한 위치에 배치 (중앙만 X → 좌상단, 우하단, 대각선 등)
+- 이미지 크기도 다양하게 (전체 배경, 작은 썸네일, PIP 등)
+
+### 필수 연출 요소 (매 씬마다 최소 3개 이상)
+- 화살표(arrow): 방향 지시, 강조, 연결선 등 다양한 각도와 위치
+- 강조 박스(highlight_box/rectangle): 중요 영역 표시
+- 밑줄(underline/line): 텍스트 강조
+- 원(circle): 영역 강조, 포인트 표시
+- 텍스트: 제목, 부제, 설명, 숫자, 라벨 등 여러 텍스트 레이어
+- 이펙트: glow, drop_shadow, vignette, light_sweep 등
+
+### 다양한 레이아웃 사용
+- 전체화면 1장 + 오버레이
+- 좌우 분할 비교 (이미지A 왼쪽 + 이미지B 오른쪽)
+- 메인 이미지 크게 + 작은 이미지 PIP (Picture in Picture)
+- 여러 이미지 격자/타일 배치
+- 이미지 위에 도형/화살표/텍스트가 가리키는 구성
+- 배경 블러 + 전경 선명 (깊이감)
+
+### 모션 다양성
+- 레이어마다 다른 entrance 사용 (전부 fade_in X)
+- 다양한 방향에서 등장 (왼쪽, 오른쪽, 위, 아래, 팝, 바운스)
+- 레이어마다 delay를 다르게 (0.1~2초 범위로 어긋나게)
+- 지속 애니메이션도 다양하게 (float, pulse, bob, sway, zoom_in 등)
+- 화살표는 wipe_in으로 그려지듯이 등장
+- 텍스트는 typewriter, pop, slide 등 다양하게
+
+## JSON 형식 규칙
+1. 스키마 정의 없이 데이터 JSON만 ($schema, definitions, properties 포함 금지)
+2. project, settings, scenes 필수
+3. settings.format="${format}", settings.fps=${fps}, settings.total_duration=${estTotal}
+4. 텍스트는 한국어
+5. 위 파일명만 정확히 사용 (존재하지 않는 파일명 사용 금지)
 
 JSON만 출력해주세요.`;
   };
@@ -534,9 +565,19 @@ JSON만 출력해주세요.`;
                       value={geminiKey}
                       onChange={(e) => setGeminiKey(e.target.value)}
                     />
-                    <div className="text-[10px] text-white/30">
+                    <div className="text-[10px] text-white/30 mb-2">
                       Google AI Studio에서 발급 (무료 사용 가능)
                     </div>
+                    <label className="text-xs text-white/50">모델</label>
+                    <select
+                      className="select-field w-full text-sm mt-1"
+                      value={geminiModel}
+                      onChange={(e) => setGeminiModel(e.target.value)}
+                    >
+                      <option value="gemini-2.5-flash" className="bg-ae-dark">Gemini 2.5 Flash (빠름, 무료)</option>
+                      <option value="gemini-2.5-pro" className="bg-ae-dark">Gemini 2.5 Pro (고품질)</option>
+                      <option value="gemini-2.0-flash" className="bg-ae-dark">Gemini 2.0 Flash</option>
+                    </select>
                   </>
                 ) : (
                   <>
@@ -668,67 +709,66 @@ JSON만 출력해주세요.`;
               </div>
             </div>
 
-            {/* Time & Format Settings */}
+            {/* Settings */}
             <div className="card-glass p-5">
-              <h2 className="text-base font-bold mb-3">시간 / 포맷 설정</h2>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs text-white/50">전체 영상 길이</label>
-                  <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold mb-3">설정</h2>
+              <div className="space-y-4">
+                {/* 씬 시간 - 메인 설정 */}
+                <div className="space-y-2">
+                  <label className="text-xs text-white/50">씬 1개 길이</label>
+                  <div className="flex items-center gap-3">
                     <input
                       type="range"
                       min={5}
-                      max={120}
-                      step={5}
-                      value={totalDuration}
-                      onChange={(e) => setTotalDuration(parseInt(e.target.value))}
-                      className="flex-1 accent-ae-highlight"
-                    />
-                    <span className="text-sm font-bold text-ae-highlight w-12 text-right">{totalDuration}초</span>
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-white/50">씬당 평균 길이</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="range"
-                      min={2}
-                      max={15}
-                      step={0.5}
+                      max={20}
+                      step={1}
                       value={sceneDuration}
-                      onChange={(e) => setSceneDuration(parseFloat(e.target.value))}
-                      className="flex-1 accent-ae-highlight"
+                      onChange={(e) => setSceneDuration(parseInt(e.target.value))}
+                      className="flex-1 accent-ae-highlight h-2"
                     />
-                    <span className="text-sm font-bold text-ae-highlight w-12 text-right">{sceneDuration}초</span>
+                    <span className="text-lg font-bold text-ae-highlight w-14 text-right">{sceneDuration}초</span>
+                  </div>
+                  <div className="flex justify-between text-[10px] text-white/30">
+                    <span>5초</span>
+                    <span>20초</span>
                   </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-white/50">포맷</label>
-                  <select
-                    className="select-field w-full text-sm"
-                    value={format}
-                    onChange={(e) => setFormat(e.target.value)}
-                  >
-                    <option value="vertical" className="bg-ae-dark">세로 (1080x1920)</option>
-                    <option value="horizontal" className="bg-ae-dark">가로 (1920x1080)</option>
-                    <option value="square" className="bg-ae-dark">정사각형 (1080x1080)</option>
-                  </select>
+
+                {/* 포맷 + FPS */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs text-white/50">포맷</label>
+                    <select
+                      className="select-field w-full text-sm"
+                      value={format}
+                      onChange={(e) => setFormat(e.target.value)}
+                    >
+                      <option value="vertical" className="bg-ae-dark">세로 (1080x1920)</option>
+                      <option value="horizontal" className="bg-ae-dark">가로 (1920x1080)</option>
+                      <option value="square" className="bg-ae-dark">정사각형 (1080x1080)</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-white/50">FPS</label>
+                    <select
+                      className="select-field w-full text-sm"
+                      value={fps}
+                      onChange={(e) => setFps(parseInt(e.target.value))}
+                    >
+                      <option value={24} className="bg-ae-dark">24 fps</option>
+                      <option value={30} className="bg-ae-dark">30 fps</option>
+                      <option value={60} className="bg-ae-dark">60 fps</option>
+                    </select>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-white/50">FPS</label>
-                  <select
-                    className="select-field w-full text-sm"
-                    value={fps}
-                    onChange={(e) => setFps(parseInt(e.target.value))}
-                  >
-                    <option value={24} className="bg-ae-dark">24 fps (시네마틱)</option>
-                    <option value={30} className="bg-ae-dark">30 fps (기본)</option>
-                    <option value={60} className="bg-ae-dark">60 fps (부드러움)</option>
-                  </select>
-                </div>
-              </div>
-              <div className="mt-3 text-[10px] text-white/30">
-                예상 씬 수: 약 {Math.round(totalDuration / sceneDuration)}개
+
+                {/* 요약 */}
+                {images.length > 0 && (
+                  <div className="bg-white/5 rounded-lg p-3 text-xs text-white/50">
+                    이미지 {images.length}장 × {sceneDuration}초 = <span className="text-ae-highlight font-bold">총 {images.length * sceneDuration}초</span> 영상
+                    <span className="text-white/30 ml-1">(효과 타이밍은 AI가 자동 결정)</span>
+                  </div>
+                )}
               </div>
             </div>
 
