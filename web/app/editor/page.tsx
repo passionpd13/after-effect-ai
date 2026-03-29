@@ -5,6 +5,7 @@ import SceneEditor from "@/components/SceneEditor";
 import ScenePreview from "@/components/ScenePreview";
 import ProjectSettings from "@/components/ProjectSettings";
 import JsonPreview from "@/components/JsonPreview";
+import ProjectDownload from "@/components/ProjectDownload";
 import Timeline from "@/components/Timeline";
 import { Storyboard } from "@/lib/types";
 import { createDefaultStoryboard, createDefaultScene } from "@/lib/default-data";
@@ -256,57 +257,65 @@ export default function EditorPage() {
               </div>
             </div>
 
-            {/* JSON Sidebar */}
+            {/* Sidebar: Download + JSON */}
             <div className="lg:col-span-3 hidden lg:block">
-              <div className="card-glass p-4 sticky top-20">
-                <h3 className="text-sm font-semibold text-white/70 mb-3">
-                  JSON 미리보기
-                </h3>
-                <div className="max-h-[65vh] overflow-auto">
-                  <pre className="text-[10px] leading-relaxed text-white/60 font-mono">
-                    {JSON.stringify(
-                      {
-                        ...data,
-                        settings: {
-                          ...data.settings,
-                          total_duration: data.scenes.reduce(
-                            (sum, s) => sum + s.duration,
-                            0
-                          ),
-                        },
-                      },
-                      null,
-                      2
-                    )}
-                  </pre>
+              <div className="sticky top-20 space-y-4">
+                {/* ZIP Download */}
+                <div className="card-glass p-4">
+                  <ProjectDownload data={data} sceneImages={sceneImages} />
                 </div>
-                <div className="mt-3 flex gap-2">
-                  <button
-                    onClick={() => {
-                      const jsonString = JSON.stringify(data, null, 2);
-                      navigator.clipboard.writeText(jsonString);
-                    }}
-                    className="flex-1 text-xs py-2 bg-white/10 rounded hover:bg-white/20 transition-all"
-                  >
-                    복사
-                  </button>
-                  <button
-                    onClick={() => {
-                      const blob = new Blob(
-                        [JSON.stringify(data, null, 2)],
-                        { type: "application/json" }
-                      );
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url;
-                      a.download = `${data.project.name || "storyboard"}.json`;
-                      a.click();
-                      URL.revokeObjectURL(url);
-                    }}
-                    className="flex-1 text-xs py-2 bg-ae-highlight rounded hover:bg-ae-highlight/80 transition-all"
-                  >
-                    다운로드
-                  </button>
+
+                {/* JSON Preview */}
+                <div className="card-glass p-4">
+                  <h3 className="text-sm font-semibold text-white/70 mb-3">
+                    JSON 미리보기
+                  </h3>
+                  <div className="max-h-[40vh] overflow-auto">
+                    <pre className="text-[10px] leading-relaxed text-white/60 font-mono">
+                      {JSON.stringify(
+                        {
+                          ...data,
+                          settings: {
+                            ...data.settings,
+                            total_duration: data.scenes.reduce(
+                              (sum, s) => sum + s.duration,
+                              0
+                            ),
+                          },
+                        },
+                        null,
+                        2
+                      )}
+                    </pre>
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => {
+                        const jsonString = JSON.stringify(data, null, 2);
+                        navigator.clipboard.writeText(jsonString);
+                      }}
+                      className="flex-1 text-xs py-2 bg-white/10 rounded hover:bg-white/20 transition-all"
+                    >
+                      복사
+                    </button>
+                    <button
+                      onClick={() => {
+                        const blob = new Blob(
+                          [JSON.stringify(data, null, 2)],
+                          { type: "application/json" }
+                        );
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `${data.project.name || "storyboard"}.json`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="flex-1 text-xs py-2 bg-ae-highlight rounded hover:bg-ae-highlight/80 transition-all"
+                    >
+                      JSON만 다운로드
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -314,17 +323,23 @@ export default function EditorPage() {
         )}
 
         {tab === "settings" && (
-          <div className="max-w-3xl">
+          <div className="max-w-3xl space-y-6">
             <div className="card-glass p-6">
               <ProjectSettings data={data} onChange={setData} />
+            </div>
+            <div className="card-glass p-6">
+              <ProjectDownload data={data} sceneImages={sceneImages} />
             </div>
           </div>
         )}
 
         {tab === "json" && (
-          <div className="max-w-4xl">
+          <div className="max-w-4xl space-y-6">
             <div className="card-glass p-6">
               <JsonPreview data={data} />
+            </div>
+            <div className="card-glass p-6 max-w-md">
+              <ProjectDownload data={data} sceneImages={sceneImages} />
             </div>
           </div>
         )}

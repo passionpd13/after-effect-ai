@@ -35,7 +35,7 @@ function Step({ number, total, title, description, children, tip }: StepProps) {
 
 /* ── After Effects 메뉴 바 모킹 ── */
 function AeMenuBar({ highlight }: { highlight?: string }) {
-  const menus = ["File", "Edit", "Composition", "Layer", "Effect", "Animation", "View", "Window", "Help"];
+  const menus = ["파일(F)", "편집(E)", "컴포지션(C)", "레이어(L)", "효과(T)", "애니메이션(A)", "보기(V)", "창(W)", "도움말(H)"];
   return (
     <div className="bg-[#2b2b2b] border-b border-[#1a1a1a] px-2 py-1 flex items-center gap-0.5 text-[12px] font-medium select-none">
       <div className="text-[#9999ff] font-bold mr-3 text-sm">Ae</div>
@@ -58,19 +58,27 @@ function AeMenuBar({ highlight }: { highlight?: string }) {
 /* ── File 드롭다운 모킹 ── */
 function AeFileMenu({ highlight }: { highlight?: string }) {
   const items = [
-    { label: "New", shortcut: "" },
-    { label: "Open Project...", shortcut: "Ctrl+O" },
-    { label: "Open Recent", shortcut: ">" },
+    { label: "새로 만들기(N)", shortcut: ">" },
+    { label: "프로젝트 열기(O)...", shortcut: "Ctrl+O" },
+    { label: "팀 프로젝트 열기...", shortcut: "" },
+    { label: "최근 사용한 파일 열기", shortcut: ">" },
+    { label: "Bridge에서 찾아보기...", shortcut: "Ctrl+Alt+Shift+O" },
     { label: "---", shortcut: "" },
-    { label: "Save", shortcut: "Ctrl+S" },
-    { label: "Save As", shortcut: ">" },
+    { label: "닫기(C)", shortcut: "Ctrl+W" },
+    { label: "프로젝트 닫기", shortcut: "" },
+    { label: "저장(S)", shortcut: "Ctrl+S" },
+    { label: "다른 이름으로 저장(S)", shortcut: ">" },
+    { label: "증분 및 저장", shortcut: "Ctrl+Alt+Shift+S" },
+    { label: "되돌리기(R)", shortcut: "" },
     { label: "---", shortcut: "" },
-    { label: "Import", shortcut: ">" },
-    { label: "Export", shortcut: ">" },
+    { label: "가져오기(I)", shortcut: ">" },
+    { label: "최근 푸티지 가져오기", shortcut: ">" },
+    { label: "내보내기(X)", shortcut: ">" },
+    { label: "Adobe에서 글꼴 추가", shortcut: "" },
     { label: "---", shortcut: "" },
-    { label: "Scripts", shortcut: ">", children: true },
+    { label: "스크립트(T)", shortcut: ">", children: true },
     { label: "---", shortcut: "" },
-    { label: "Project Settings...", shortcut: "" },
+    { label: "프로젝트 설정...", shortcut: "" },
   ];
   return (
     <div className="bg-[#383838] border border-[#555] rounded shadow-2xl py-1 w-64 text-[12px]">
@@ -98,10 +106,10 @@ function AeFileMenu({ highlight }: { highlight?: string }) {
 /* ── Scripts 서브메뉴 모킹 ── */
 function AeScriptsMenu({ highlight }: { highlight?: string }) {
   const items = [
-    "Open Script Editor...",
-    "Run Script File...",
+    "스크립트 편집기 열기...",
+    "스크립트 파일 실행...",
     "---",
-    "Install Script UI Panel...",
+    "ScriptUI 패널 설치...",
   ];
   return (
     <div className="bg-[#383838] border border-[#555] rounded shadow-2xl py-1 w-56 text-[12px]">
@@ -287,9 +295,9 @@ export default function AeTutorial() {
 
   const steps = [
     { title: "폴더 준비", short: "폴더" },
-    { title: "AE 실행 & File 메뉴", short: "File" },
-    { title: "Scripts 메뉴", short: "Scripts" },
-    { title: "Run Script File 선택", short: "Run" },
+    { title: "AE 실행 & 파일 메뉴", short: "파일" },
+    { title: "스크립트 메뉴", short: "스크립트" },
+    { title: "스크립트 파일 실행 선택", short: "실행" },
     { title: "JSX 스크립트 선택", short: "JSX" },
     { title: "JSON 파일 선택", short: "JSON" },
     { title: "자동 생성 완료!", short: "완료" },
@@ -388,11 +396,11 @@ export default function AeTutorial() {
       {currentStep === 1 && (
         <Step
           number={2} total={7}
-          title="After Effects 실행 → File 메뉴 클릭"
-          description="After Effects를 실행하고, 상단 메뉴 바에서 'File'을 클릭합니다."
+          title="After Effects 실행 → 파일 메뉴 클릭"
+          description="After Effects를 실행하고, 상단 메뉴 바에서 '파일(F)'을 클릭합니다."
         >
           <div className="rounded-lg overflow-hidden border border-[#444]">
-            <AeMenuBar highlight="File" />
+            <AeMenuBar highlight="파일(F)" />
             <div className="bg-[#1e1e1e] h-32 flex items-center justify-center">
               <div className="text-center">
                 <div className="text-white/20 text-sm">After Effects 메인 화면</div>
@@ -403,7 +411,7 @@ export default function AeTutorial() {
             <div className="text-3xl">👆</div>
             <div className="text-sm">
               <div className="font-bold text-ae-highlight">여기를 클릭!</div>
-              <div className="text-white/60">상단 맨 왼쪽의 <strong>&quot;File&quot;</strong> 메뉴를 클릭하세요</div>
+              <div className="text-white/60">상단 맨 왼쪽의 <strong>&quot;파일(F)&quot;</strong> 메뉴를 클릭하세요</div>
             </div>
           </div>
         </Step>
@@ -413,22 +421,22 @@ export default function AeTutorial() {
       {currentStep === 2 && (
         <Step
           number={3} total={7}
-          title="드롭다운에서 'Scripts' 찾기"
-          description="File 메뉴를 클릭하면 드롭다운이 나타납니다. 아래로 스크롤하여 'Scripts'를 찾으세요."
+          title="드롭다운 맨 아래쪽에서 '스크립트(T)' 찾기"
+          description="파일 메뉴를 클릭하면 드롭다운이 나타납니다. 메뉴가 길어서 아래로 스크롤해야 합니다! '내보내기(X)' → 'Adobe에서 글꼴 추가' 아래에 '스크립트(T)'가 있습니다."
         >
           <div className="rounded-lg overflow-hidden border border-[#444]">
-            <AeMenuBar highlight="File" />
+            <AeMenuBar highlight="파일(F)" />
             <div className="bg-[#1e1e1e] p-4 min-h-[200px] relative">
               <div className="absolute top-0 left-2">
-                <AeFileMenu highlight="Scripts" />
+                <AeFileMenu highlight="스크립트(T)" />
               </div>
             </div>
           </div>
           <div className="flex items-center gap-3 bg-ae-highlight/10 border border-ae-highlight/30 rounded-lg p-4">
             <div className="text-3xl">👆</div>
             <div className="text-sm">
-              <div className="font-bold text-ae-highlight">&quot;Scripts&quot;에 마우스를 올리세요!</div>
-              <div className="text-white/60">메뉴 중간쯤에 있는 <strong>&quot;Scripts&quot;</strong> 항목에 마우스를 올리면 서브메뉴가 나타납니다</div>
+              <div className="font-bold text-ae-highlight">&quot;스크립트(T)&quot;에 마우스를 올리세요!</div>
+              <div className="text-white/60">메뉴 <strong>맨 아래쪽</strong>에 있습니다. 스크롤해서 찾으세요! 마우스를 올리면 서브메뉴가 나타납니다</div>
             </div>
           </div>
         </Step>
@@ -438,16 +446,16 @@ export default function AeTutorial() {
       {currentStep === 3 && (
         <Step
           number={4} total={7}
-          title="'Run Script File...' 클릭"
-          description="Scripts 위에 마우스를 올리면 서브메뉴가 나타납니다. 'Run Script File...'을 클릭하세요."
+          title="'스크립트 파일 실행...' 클릭"
+          description="스크립트(T) 위에 마우스를 올리면 서브메뉴가 나타납니다. '스크립트 파일 실행...'을 클릭하세요."
         >
           <div className="rounded-lg overflow-hidden border border-[#444]">
-            <AeMenuBar highlight="File" />
+            <AeMenuBar highlight="파일(F)" />
             <div className="bg-[#1e1e1e] p-4 min-h-[200px] relative">
               <div className="absolute top-0 left-2 flex">
-                <AeFileMenu highlight="Scripts" />
+                <AeFileMenu highlight="스크립트(T)" />
                 <div className="ml-0 -mt-0">
-                  <AeScriptsMenu highlight="Run Script File..." />
+                  <AeScriptsMenu highlight="스크립트 파일 실행..." />
                 </div>
               </div>
             </div>
@@ -455,7 +463,7 @@ export default function AeTutorial() {
           <div className="flex items-center gap-3 bg-ae-highlight/10 border border-ae-highlight/30 rounded-lg p-4">
             <div className="text-3xl">👆</div>
             <div className="text-sm">
-              <div className="font-bold text-ae-highlight">&quot;Run Script File...&quot; 클릭!</div>
+              <div className="font-bold text-ae-highlight">&quot;스크립트 파일 실행...&quot; 클릭!</div>
               <div className="text-white/60">클릭하면 파일 선택 다이얼로그가 열립니다</div>
             </div>
           </div>
