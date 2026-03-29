@@ -17,13 +17,17 @@
 // [0] 유틸리티 함수
 // ============================================================
 // 색상값을 안전한 [R,G,B] 배열로 변환 (0~1 범위)
+// [R,G,B,A] 4개 값이면 A는 무시하고 3개만 사용
+// [255,0,0] 같은 0~255 범위는 자동 변환
+// 숫자가 아닌 값이면 fallback 사용
 function safeColor(val, fallback) {
     if (!fallback) fallback = [1, 1, 1];
     if (!val) return fallback;
     if (!(val instanceof Array)) return fallback;
     if (val.length < 3) return fallback;
+    var r = Number(val[0]), g = Number(val[1]), b = Number(val[2]);
+    if (isNaN(r) || isNaN(g) || isNaN(b)) return fallback;
     // 0~255 범위인 경우 0~1로 변환
-    var r = val[0], g = val[1], b = val[2];
     if (r > 1 || g > 1 || b > 1) {
         r = r / 255; g = g / 255; b = b / 255;
     }
@@ -32,6 +36,19 @@ function safeColor(val, fallback) {
         Math.max(0, Math.min(1, g)),
         Math.max(0, Math.min(1, b))
     ];
+}
+
+// 안전하게 setValue 호출 (배열이 아니면 무시)
+function safeSetValue(prop, val) {
+    try {
+        if (val instanceof Array) {
+            prop.setValue(val);
+        } else if (typeof val === "number") {
+            prop.setValue(val);
+        }
+    } catch(e) {
+        // setValue 실패 무시
+    }
 }
 
 // ============================================================
@@ -1091,6 +1108,7 @@ function processV2(comp, data, projectFolder) {
 
             // --- 도형 레이어 ---
             if (layerDef.type === "shape" && layerDef.shape_content) {
+              try {
                 aeLayer = comp.layers.addShape();
                 aeLayer.name = layerDef.name || layerDef.id || ("Shape_" + si + "_" + li);
                 aeLayer.startTime = currentTime;
@@ -1100,54 +1118,68 @@ function processV2(comp, data, projectFolder) {
                 var shapeGroup = aeLayer.property("Contents").addProperty("ADBE Vector Group");
                 var sc = layerDef.shape_content;
 
+                // 색상 결정 (다양한 Gemini 출력 형식 대응)
+                var shapeColor = safeColor(sc.color, [1, 0, 0]);
+                // sc.stroke.color가 있으면 그걸 사용
+                if (sc.stroke && sc.stroke.color) {
+                    shapeColor = safeColor(sc.stroke.color, shapeColor);
+                }
+                var strokeWidth = sc.stroke_width || (sc.stroke && sc.stroke.width) || 4;
+
                 if (sc.shape_type === "rectangle" || sc.shape_type === "highlight_box") {
                     var rect = shapeGroup.property("Contents").addProperty("ADBE Vector Shape - Rect");
-                    if (sc.size) {
-                        rect.property("Size").setValue(sc.size);
-                    }
+                    var rectW = sc.width || (sc.size ? sc.size[0] : 200);
+                    var rectH = sc.height || (sc.size ? sc.size[1] : 100);
+                    safeSetValue(rect.property("Size"), [rectW, rectH]);
                 } else if (sc.shape_type === "circle") {
                     var ellipse = shapeGroup.property("Contents").addProperty("ADBE Vector Shape - Ellipse");
-                    if (sc.size) {
-                        ellipse.property("Size").setValue(sc.size);
-                    }
+                    var radius = sc.radius || 50;
+                    safeSetValue(ellipse.property("Size"), [radius * 2, radius * 2]);
                 } else {
-                    // arrow, line, underline, connector, bracket → 패스로 그림
+                    // arrow, line, underline, connector → 패스로 그림
                     var pathGroup = shapeGroup.property("Contents").addProperty("ADBE Vector Shape - Group");
                     var sp = sc.start_point || { x: 0, y: 0 };
                     var ep = sc.end_point || { x: 100, y: 0 };
                     var shapePath = new Shape();
-                    shapePath.vertices = [[sp.x, sp.y], [ep.x, ep.y]];
+                    shapePath.vertices = [[sp.x || 0, sp.y || 0], [ep.x || 100, ep.y || 0]];
                     shapePath.closed = false;
                     pathGroup.property("Path").setValue(shapePath);
                 }
 
                 // 스트로크
                 var stroke = shapeGroup.property("Contents").addProperty("ADBE Vector Graphic - Stroke");
-                stroke.property("Color").setValue(safeColor(sc.color, [1, 0, 0]));
-                stroke.property("Stroke Width").setValue(sc.stroke_width || 4);
+                safeSetValue(stroke.property("Color"), shapeColor);
+                safeSetValue(stroke.property("Stroke Width"), strokeWidth);
 
-                // 채우기
-                if (sc.fill) {
+                // 채우기 (fill이 명시적으로 true인 경우만)
+                if (sc.fill === true) {
                     var fill = shapeGroup.property("Contents").addProperty("ADBE Vector Graphic - Fill");
-                    fill.property("Color").setValue(safeColor(sc.color, [1, 0, 0]));
+                    safeSetValue(fill.property("Color"), shapeColor);
                 }
+              } catch (shapeErr) {
+                errorLog.push("씬 " + (si+1) + " 도형 '" + (layerDef.name || layerDef.id) + "': " + shapeErr.toString());
+              }
             }
 
             // --- 공통: Transform 적용 ---
             if (aeLayer && layerDef.transform) {
+              try {
                 var t = layerDef.transform;
                 if (t.position) {
-                    aeLayer.property("Position").setValue([t.position.x || 540, t.position.y || 960]);
+                    safeSetValue(aeLayer.property("Position"), [Number(t.position.x) || 540, Number(t.position.y) || 960]);
                 }
-                if (t.scale) {
-                    aeLayer.property("Scale").setValue(t.scale);
+                if (t.scale && t.scale instanceof Array && t.scale.length >= 2) {
+                    safeSetValue(aeLayer.property("Scale"), [Number(t.scale[0]) || 100, Number(t.scale[1]) || 100]);
                 }
                 if (t.opacity !== undefined && t.opacity !== null) {
-                    aeLayer.property("Opacity").setValue(t.opacity);
+                    safeSetValue(aeLayer.property("Opacity"), Number(t.opacity) || 100);
                 }
                 if (t.rotation) {
-                    aeLayer.property("Rotation").setValue(t.rotation);
+                    safeSetValue(aeLayer.property("Rotation"), Number(t.rotation) || 0);
                 }
+              } catch(transformErr) {
+                errorLog.push("씬 " + (si+1) + " transform '" + (layerDef.name || layerDef.id) + "': " + transformErr.toString());
+              }
             }
 
             // --- 3D 레이어 ---
