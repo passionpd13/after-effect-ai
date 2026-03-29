@@ -102,7 +102,19 @@ function createProject(data) {
     );
     
     // 배경색 설정
-    var bg = safeColor(settings.background_color, [0.85, 0.85, 0.85]);
+    // v1: settings.background_color = [r,g,b]
+    // v2: settings.background.type = "gradient" | "solid", settings.background.color, settings.background.gradient.colors
+    var bg = [0.85, 0.85, 0.85]; // 기본값
+    if (settings.background_color) {
+        bg = safeColor(settings.background_color, bg);
+    } else if (settings.background) {
+        if (settings.background.color) {
+            bg = safeColor(settings.background.color, bg);
+        } else if (settings.background.gradient && settings.background.gradient.colors && settings.background.gradient.colors.length > 0) {
+            // 그라데이션의 첫 번째 색상 사용 (AE solid는 단색만 가능)
+            bg = safeColor(settings.background.gradient.colors[0], bg);
+        }
+    }
     var bgSolid = comp.layers.addSolid(
         bg,
         "Background",
@@ -1447,7 +1459,10 @@ function main() {
               "렌더 큐에서 렌더링을 시작하세요.");
               
     } catch (e) {
-        alert("에러 발생: " + e.toString());
+        var errMsg = "에러 발생: " + e.toString();
+        if (e.line) errMsg += "\n줄 번호: " + e.line;
+        if (e.source) errMsg += "\n소스: " + e.source.substring(0, 200);
+        alert(errMsg);
     }
     
     app.endUndoGroup();
