@@ -27,6 +27,123 @@ export default function AiModePage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [copyPromptDone, setCopyPromptDone] = useState(false);
   const [error, setError] = useState("");
+  const [jsonValidation, setJsonValidation] = useState<{
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+    scenes: number;
+    layers: number;
+    referencedFiles: string[];
+    missingFiles: string[];
+    availableFiles: string[];
+  } | null>(null);
+
+  // JSON 검증 함수
+  const validateJson = useCallback((jsonStr: string) => {
+    if (!jsonStr.trim()) {
+      setJsonValidation(null);
+      return;
+    }
+
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    let parsed: Record<string, unknown>;
+
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      setJsonValidation({ valid: false, errors: ["JSON 파싱 실패 - 형식이 올바르지 않습니다"], warnings: [], scenes: 0, layers: 0, referencedFiles: [], missingFiles: [], availableFiles: [] });
+      return;
+    }
+
+    // 스키마+데이터 혼합 감지
+    if (parsed.$schema || parsed.definitions || parsed.properties) {
+      errors.push("스키마 정의가 포함되어 있습니다. 데이터만 있어야 합니다. ($schema, definitions, properties 제거 필요)");
+    }
+
+    // 필수 필드
+    if (!parsed.project) errors.push("'project' 필드가 없습니다");
+    if (!parsed.settings) errors.push("'settings' 필드가 없습니다");
+    if (!parsed.scenes || !Array.isArray(parsed.scenes)) {
+      errors.push("'scenes' 배열이 없습니다");
+      setJsonValidation({ valid: false, errors, warnings, scenes: 0, layers: 0, referencedFiles: [], missingFiles: [], availableFiles: [] });
+      return;
+    }
+
+    const scenes = parsed.scenes as Record<string, unknown>[];
+    if (scenes.length === 0) errors.push("씬이 하나도 없습니다");
+
+    // settings 검증
+    const settings = parsed.settings as Record<string, unknown> | undefined;
+    if (settings) {
+      if (!settings.total_duration || (settings.total_duration as number) <= 0) {
+        warnings.push("total_duration이 없거나 0입니다 (씬 합계로 자동 계산됨)");
+      }
+    }
+
+    // 이미지 파일 참조 수집
+    const referencedFiles: string[] = [];
+    let totalLayers = 0;
+
+    for (let si = 0; si < scenes.length; si++) {
+      const scene = scenes[si] as Record<string, unknown>;
+      const sceneLabel = `씬 ${(scene.id as number) || si + 1}`;
+
+      if (!scene.duration || (scene.duration as number) <= 0) {
+        errors.push(`${sceneLabel}: duration이 없거나 0입니다`);
+      }
+
+      // v1 형식
+      if (scene.image) {
+        const img = scene.image as Record<string, string>;
+        if (img.file) referencedFiles.push(img.file);
+      }
+
+      // v2 형식
+      if (scene.layers && Array.isArray(scene.layers)) {
+        const layers = scene.layers as Record<string, unknown>[];
+        totalLayers += layers.length;
+        for (const layer of layers) {
+          if (layer.image_source) {
+            const src = layer.image_source as Record<string, string>;
+            if (src.file && !referencedFiles.includes(src.file)) {
+              referencedFiles.push(src.file);
+            }
+          }
+        }
+      }
+    }
+
+    // 업로드된 파일과 매칭
+    const uploadedNames = images.map((img) => img.name);
+    const cutoutNames = images.filter((img) => img.cutoutName).map((img) => img.cutoutName!);
+    const allAvailable = [...uploadedNames, ...cutoutNames];
+    const missingFiles = referencedFiles.filter((f) => !allAvailable.includes(f));
+
+    if (missingFiles.length > 0) {
+      errors.push(`${missingFiles.length}개 이미지 파일이 업로드되지 않았습니다:`);
+      for (const f of missingFiles) {
+        errors.push(`  → "${f}"`);
+      }
+    }
+
+    setJsonValidation({
+      valid: errors.length === 0,
+      errors,
+      warnings,
+      scenes: scenes.length,
+      layers: totalLayers,
+      referencedFiles,
+      missingFiles,
+      availableFiles: allAvailable,
+    });
+  }, [images]);
+
+  // JSON 변경 시 자동 검증
+  const handleJsonChange = useCallback((text: string) => {
+    setGeneratedJson(text);
+    validateJson(text);
+  }, [validateJson]);
 
   // API Keys (선택적)
   const [anthropicKey, setAnthropicKey] = useState("");
@@ -164,10 +281,10 @@ export default function AiModePage() {
       });
       const data = await res.json();
       if (data.success) {
-        setGeneratedJson(data.json);
+        handleJsonChange(data.json);
       } else {
         setError(data.error || "생성 실패");
-        if (data.raw) setGeneratedJson(data.raw);
+        if (data.raw) handleJsonChange(data.raw);
       }
     } catch (e) {
       setError(`요청 실패: ${(e as Error).message}`);
@@ -178,9 +295,13 @@ export default function AiModePage() {
 
   // ── 수동 모드: 프롬프트 복사 ──
   const generatePrompt = () => {
+    const hasCutoutsAvailable = images.some((img) => img.cutoutName);
+
     const imageList = images.map((img, i) => {
-      let line = `${i + 1}. ${img.name} (원본)`;
-      if (img.cutoutName) line += `\n   ${img.cutoutName} (배경 제거됨)`;
+      let line = `${i + 1}. ${img.name}`;
+      if (img.cutoutName && img.cutoutDataUrl) {
+        line += `\n   ${img.cutoutName} (배경 제거됨)`;
+      }
       return line;
     }).join("\n");
 
@@ -200,14 +321,19 @@ export default function AiModePage() {
 - 씬당 평균 길이: ${sceneDuration}초
 - 설명: ${description || "(이미지를 분석해서 자동으로 판단해주세요)"}
 
-## 업로드된 이미지 파일들
+## 업로드된 이미지 파일들 (이 파일명만 사용하세요!)
 ${imageList}
 
+## 중요: 파일명 규칙
+- 위 목록에 있는 파일명만 정확히 사용하세요
+- 존재하지 않는 파일명(예: _cutout.png)을 만들어내지 마세요
+${hasCutoutsAvailable ? "- _cutout.png 파일이 있는 경우 배경 제거된 객체로 독립 레이어 사용 가능" : "- 배경 제거 파일이 없으므로 원본 이미지만 사용하세요"}
+
 ## 요구사항
-1. storyboard-schema-v2.json 형식에 맞춰 JSON 생성
-2. 각 이미지 내 객체들을 분석하여 독립 레이어로 분리
-3. _cutout.png 파일은 배경 제거된 객체 → 독립 레이어로 사용
-4. 원본 이미지는 배경/전체샷으로 사용
+1. 스키마 정의 없이 데이터 JSON만 출력 ($schema, definitions, properties 등 포함 금지)
+2. 반드시 project, settings (width, height, fps, total_duration), scenes 포함
+3. 각 이미지를 배경으로 깔고, 위에 텍스트/도형 오버레이로 고퀄 연출
+4. 같은 이미지를 여러 레이어에서 다른 scale/position으로 재사용 가능
 5. 3D 카메라를 활용하여 깊이감
 6. 요소들은 순차적으로 등장 (0.2~0.5초 간격)
 7. ancrid 수준의 고퀄리티 모션그래픽
@@ -585,46 +711,84 @@ JSON만 출력해주세요.`;
 
             {/* JSON Result */}
             <div className="card-glass p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-base font-bold">3. 생성된 JSON</h2>
-                {generatedJson && (() => {
-                  try {
-                    const p = JSON.parse(generatedJson);
-                    const scenes = p.scenes?.length || 0;
-                    const layers = p.scenes?.reduce((sum: number, s: { layers?: unknown[] }) => sum + (s.layers?.length || 0), 0) || 0;
-                    return (
-                      <div className="flex gap-2 text-[10px]">
-                        <span className="text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full">✓ 유효</span>
-                        <span className="text-white/40">{scenes}씬</span>
-                        <span className="text-white/40">{layers}레이어</span>
+              <h2 className="text-base font-bold mb-3">3. 생성된 JSON 붙여넣기</h2>
+
+              <textarea
+                className="input-field w-full h-48 resize-none font-mono text-[11px]"
+                placeholder={"Claude가 생성한 JSON을 여기에 붙여넣으세요...\n\n{\n  \"project\": { ... },\n  \"settings\": { ... },\n  \"scenes\": [ ... ]\n}"}
+                value={generatedJson}
+                onChange={(e) => handleJsonChange(e.target.value)}
+              />
+
+              {/* 검증 결과 */}
+              {jsonValidation && (
+                <div className="mt-3 space-y-2">
+                  {/* 상태 요약 */}
+                  <div className={`rounded-lg p-3 text-sm ${
+                    jsonValidation.valid
+                      ? "bg-green-500/10 border border-green-500/30"
+                      : "bg-red-500/10 border border-red-500/30"
+                  }`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`font-bold ${jsonValidation.valid ? "text-green-400" : "text-red-400"}`}>
+                        {jsonValidation.valid ? "✅ JSON 검증 통과" : "❌ JSON 검증 실패"}
+                      </span>
+                      <div className="flex gap-2 text-[10px] text-white/50">
+                        <span>{jsonValidation.scenes}씬</span>
+                        <span>{jsonValidation.layers}레이어</span>
+                        <span>이미지 {jsonValidation.referencedFiles.length}개 참조</span>
                       </div>
-                    );
-                  } catch { return <span className="text-red-400 text-[10px]">✗ 형식 오류</span>; }
-                })()}
-              </div>
+                    </div>
 
-              {mode === "manual" || !generatedJson ? (
-                <textarea
-                  className="input-field w-full h-48 resize-none font-mono text-[11px]"
-                  placeholder={mode === "auto" ? "AI가 생성한 JSON이 여기에 표시됩니다..." : "Claude가 생성한 JSON을 여기에 붙여넣으세요..."}
-                  value={generatedJson}
-                  onChange={(e) => setGeneratedJson(e.target.value)}
-                />
-              ) : (
-                <div className="bg-white/5 rounded-lg p-3 max-h-80 overflow-auto">
-                  <pre className="text-[10px] text-white/60 font-mono whitespace-pre-wrap">{generatedJson}</pre>
+                    {/* 에러 */}
+                    {jsonValidation.errors.length > 0 && (
+                      <div className="space-y-1">
+                        {jsonValidation.errors.map((err, i) => (
+                          <div key={i} className="text-xs text-red-400">
+                            {err.startsWith("  →") ? (
+                              <span className="pl-4 text-red-300">{err}</span>
+                            ) : (
+                              <span>• {err}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* 경고 */}
+                    {jsonValidation.warnings.length > 0 && (
+                      <div className="mt-1 space-y-1">
+                        {jsonValidation.warnings.map((w, i) => (
+                          <div key={i} className="text-xs text-yellow-400">⚠ {w}</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 파일 매칭 상세 */}
+                  {jsonValidation.referencedFiles.length > 0 && (
+                    <div className="bg-white/5 rounded-lg p-3">
+                      <div className="text-[10px] text-white/40 font-semibold mb-1.5">JSON에서 참조하는 이미지 파일:</div>
+                      <div className="space-y-0.5">
+                        {jsonValidation.referencedFiles.map((f, i) => {
+                          const exists = jsonValidation.availableFiles.includes(f);
+                          return (
+                            <div key={i} className={`text-[11px] flex items-center gap-1.5 ${exists ? "text-green-400" : "text-red-400"}`}>
+                              <span>{exists ? "✓" : "✗"}</span>
+                              <span className="font-mono">{f}</span>
+                              {!exists && <span className="text-[9px] text-red-400/60">(업로드 필요)</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {jsonValidation.missingFiles.length > 0 && (
+                        <div className="mt-2 text-[10px] text-red-400/70">
+                          💡 누락된 파일을 위 이미지 업로드에서 추가하거나, JSON의 파일명을 업로드된 파일명에 맞게 수정하세요.
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              )}
-
-              {generatedJson && mode === "auto" && (
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(generatedJson);
-                  }}
-                  className="mt-2 text-xs text-white/50 hover:text-white"
-                >
-                  JSON 복사
-                </button>
               )}
             </div>
 
@@ -632,9 +796,9 @@ JSON만 출력해주세요.`;
             <div className="card-glass p-5">
               <button
                 onClick={handleDownloadZip}
-                disabled={!generatedJson}
+                disabled={!generatedJson || (jsonValidation !== null && !jsonValidation.valid)}
                 className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${
-                  !generatedJson
+                  !generatedJson || (jsonValidation !== null && !jsonValidation.valid)
                     ? "bg-white/10 text-white/30 cursor-not-allowed"
                     : "bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:opacity-90 hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-green-500/20"
                 }`}
