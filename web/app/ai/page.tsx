@@ -357,82 +357,83 @@ export default function AiModePage() {
     }).join("\n");
     const imageList = [storyboardList, sourceList].filter(Boolean).join("\n");
 
-    const formatMap: Record<string, string> = {
-      vertical: "세로형 (1080x1920)",
-      horizontal: "가로형 (1920x1080)",
-      square: "정사각형 (1080x1080)",
+    const formatMap: Record<string, { label: string; w: number; h: number }> = {
+      vertical: { label: "9:16 세로", w: 1080, h: 1920 },
+      horizontal: { label: "16:9 가로", w: 1920, h: 1080 },
+      square: { label: "1:1 정사각형", w: 1080, h: 1080 },
+      vertical_4_5: { label: "4:5 세로", w: 1080, h: 1350 },
+      horizontal_21_9: { label: "21:9 울트라와이드", w: 2560, h: 1080 },
+      vertical_2_3: { label: "2:3 세로", w: 1080, h: 1620 },
     };
+    const fmt = formatMap[format] || formatMap.vertical;
 
-    return `이미지들을 분석하여 ancrid 수준의 고퀄리티 모션그래픽 JSON을 생성해주세요.
+    const lines = [
+      "이미지들을 분석하여 ancrid 수준의 고퀄리티 모션그래픽 JSON을 생성해주세요.",
+      "",
+      "## 프로젝트 설정",
+      "- 스타일: " + style,
+      "- 포맷: " + fmt.label + " (" + fmt.w + "x" + fmt.h + ")",
+      "- FPS: " + fps,
+      "- 전체 영상 길이: " + videoDuration + "초 (settings.total_duration = " + videoDuration + ")",
+      description ? "- 설명: " + description : "- 이미지를 분석해서 내용에 맞게 자동 판단해주세요",
+      "",
+      "## 업로드된 이미지 (이 파일명만 사용!)",
+      imageList,
+      hasCutoutsAvailable ? "※ _cutout.png 파일은 배경 제거된 객체입니다" : "",
+    ];
 
-## 프로젝트 설정
-- 스타일: ${style}
-- 포맷: ${formatMap[format] || formatMap.vertical}
-- FPS: ${fps}
-- 전체 영상 길이: ${videoDuration}초 (settings.total_duration = ${videoDuration})
-${description ? `- 설명: ${description}` : "- 이미지를 분석해서 내용에 맞게 자동 판단해주세요"}
+    if (storyboards.length > 0) {
+      lines.push(
+        "",
+        "## 중요: 스토리보드 분석 지시",
+        "표시된 이미지는 스토리보드입니다. 자세히 분석하여:",
+        "1. 스토리보드에 그려진 레이아웃/배치를 그대로 따라하세요",
+        "2. 화살표가 있으면 해당 방향으로 애니메이션 적용",
+        "3. 텍스트가 적혀있으면 그 텍스트를 그 위치에 배치",
+        "4. 위치/크기 표시가 있으면 position/scale에 반영",
+        "5. 동작 지시(줌, 회전, 이동)가 있으면 animation/entrance에 반영",
+        "6. 번호나 순서가 있으면 씬 순서와 등장 delay에 반영",
+        "7. 스토리보드 이미지 자체는 영상에 사용하지 말 것!",
+        "8. 소스 이미지만 영상의 레이어로 사용하세요"
+      );
+    }
 
-## 업로드된 이미지 (이 파일명만 사용!)
-${imageList}
-${hasCutoutsAvailable ? "※ _cutout.png 파일은 배경 제거된 객체입니다" : ""}
-${storyboards.length > 0 ? `
-## 중요: 스토리보드 분석 지시
-📋 표시된 이미지는 스토리보드입니다. 이 이미지를 자세히 분석하여:
-1. 스토리보드에 그려진 레이아웃/배치를 그대로 따라하세요
-2. 화살표가 있으면 → 해당 방향으로 애니메이션 (slide, pan 등)
-3. 텍스트가 적혀있으면 → 그 텍스트를 그 위치에 배치
-4. 위치/크기 표시가 있으면 → position/scale에 반영
-5. 동작 지시(줌, 회전, 이동 등)가 있으면 → animation/entrance에 반영
-6. 번호나 순서가 있으면 → 씬 순서와 등장 순서(delay)에 반영
-7. 스토리보드 이미지 자체는 영상에 사용하지 말 것 (참고용!)
-8. 🖼️ 소스 이미지만 영상의 레이어로 사용하세요
-` : ""}
+    lines.push(
+      "",
+      "## 핵심: 모든 이미지를 하나의 영상에서 다양하게 연출!",
+      "",
+      "### 씬 구성 규칙",
+      "- 이미지 1장 = 씬 1개가 아닙니다!",
+      "- 한 씬에서 모든 이미지가 다양하게 등장/퇴장/재등장",
+      "- 씬 수는 AI가 자유롭게 결정 (3~8개)",
+      "- 각 씬에서 여러 이미지를 동시 배치",
+      "- 같은 이미지를 여러 씬에서 재사용 가능",
+      "",
+      "### 필수 연출 요소",
+      "- 화살표(arrow), 강조 박스(rectangle), 밑줄(line), 원(circle)",
+      "- 텍스트: 제목, 부제, 설명, 라벨 등 여러 텍스트 레이어",
+      "",
+      "### 다양한 레이아웃",
+      "- 전체화면 + 오버레이, 좌우분할, PIP, 격자, 배경블러+전경선명",
+      "",
+      "### 모션 다양성",
+      "- 레이어마다 다른 entrance (fade_in만 반복 금지)",
+      "- delay를 0.1~2초 범위로 어긋나게",
+      "",
+      "## JSON 형식 규칙",
+      "1. 스키마 정의 없이 데이터 JSON만",
+      "2. project, settings, scenes 필수",
+      "3. settings.width=" + fmt.w + ", height=" + fmt.h + ", fps=" + fps + ", total_duration=" + videoDuration,
+      "4. 각 씬 duration 합계 = " + videoDuration + "초",
+      "5. 텍스트는 한국어",
+      "6. 위 파일명만 사용 (존재하지 않는 파일명 금지)",
+      "7. 이미지가 화면 밖으로 잘리면 안됨! fit_mode는 contain, position은 화면 안에서만",
+      "8. scale 100 이상이면 position을 중앙(" + Math.round(fmt.w / 2) + "," + Math.round(fmt.h / 2) + ")에 가깝게",
+      "",
+      "JSON만 출력해주세요."
+    );
 
-## 핵심: 모든 이미지를 하나의 영상에서 다양하게 연출!
-
-### 씬 구성 규칙 (매우 중요!)
-- 이미지 1장 = 씬 1개가 아닙니다!
-- 하나의 씬 안에서 모든 이미지가 다양하게 등장/퇴장/재등장해야 합니다
-- 씬 수는 AI가 자유롭게 결정 (3~8개 정도)
-- 각 씬에서 여러 이미지를 동시에 배치 (배경 + 이미지A + 이미지B + 텍스트 + 도형)
-- 같은 이미지를 여러 씬에서 재사용 (다른 위치/크기/효과로)
-- 같은 이미지를 한 씬에서 여러 레이어로 (다른 crop/scale)
-- 이미지를 다양한 위치에 배치 (중앙만 X → 좌상단, 우하단, 대각선 등)
-- 이미지 크기도 다양하게 (전체 배경, 작은 썸네일, PIP 등)
-
-### 필수 연출 요소 (매 씬마다 최소 3개 이상)
-- 화살표(arrow): 방향 지시, 강조, 연결선 등 다양한 각도와 위치
-- 강조 박스(highlight_box/rectangle): 중요 영역 표시
-- 밑줄(underline/line): 텍스트 강조
-- 원(circle): 영역 강조, 포인트 표시
-- 텍스트: 제목, 부제, 설명, 숫자, 라벨 등 여러 텍스트 레이어
-- 이펙트: glow, drop_shadow, vignette, light_sweep 등
-
-### 다양한 레이아웃 사용
-- 전체화면 1장 + 오버레이
-- 좌우 분할 비교 (이미지A 왼쪽 + 이미지B 오른쪽)
-- 메인 이미지 크게 + 작은 이미지 PIP (Picture in Picture)
-- 여러 이미지 격자/타일 배치
-- 이미지 위에 도형/화살표/텍스트가 가리키는 구성
-- 배경 블러 + 전경 선명 (깊이감)
-
-### 모션 다양성
-- 레이어마다 다른 entrance 사용 (전부 fade_in X)
-- 다양한 방향에서 등장 (왼쪽, 오른쪽, 위, 아래, 팝, 바운스)
-- 레이어마다 delay를 다르게 (0.1~2초 범위로 어긋나게)
-- 지속 애니메이션도 다양하게 (float, pulse, bob, sway, zoom_in 등)
-- 화살표는 wipe_in으로 그려지듯이 등장
-- 텍스트는 typewriter, pop, slide 등 다양하게
-
-## JSON 형식 규칙
-1. 스키마 정의 없이 데이터 JSON만 ($schema, definitions, properties 포함 금지)
-2. project, settings, scenes 필수
-3. settings.format="${format}", settings.fps=${fps}, settings.total_duration=${videoDuration}
-4. 각 씬의 duration 합계 = ${videoDuration}초 (씬 수와 개별 길이는 AI가 결정)
-5. 텍스트는 한국어
-6. 위 파일명만 정확히 사용 (존재하지 않는 파일명 사용 금지)
-
-JSON만 출력해주세요.`;
+    return lines.join("\n");
   };
 
   const handleCopyPrompt = async () => {
@@ -777,31 +778,53 @@ JSON만 출력해주세요.`;
                   </div>
                 </div>
 
-                {/* 포맷 + FPS */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs text-white/50">포맷</label>
-                    <select
-                      className="select-field w-full text-sm"
-                      value={format}
-                      onChange={(e) => setFormat(e.target.value)}
-                    >
-                      <option value="vertical" className="bg-ae-dark">세로 (1080x1920)</option>
-                      <option value="horizontal" className="bg-ae-dark">가로 (1920x1080)</option>
-                      <option value="square" className="bg-ae-dark">정사각형 (1080x1080)</option>
-                    </select>
+                {/* 영상 비율 */}
+                <div className="space-y-2">
+                  <label className="text-xs text-white/50">영상 비율</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { value: "vertical", label: "9:16 세로", desc: "쇼츠/릴스", w: 1080, h: 1920, icon: "📱" },
+                      { value: "horizontal", label: "16:9 가로", desc: "유튜브", w: 1920, h: 1080, icon: "🖥️" },
+                      { value: "square", label: "1:1 정사각형", desc: "인스타", w: 1080, h: 1080, icon: "📷" },
+                      { value: "vertical_4_5", label: "4:5 세로", desc: "인스타 피드", w: 1080, h: 1350, icon: "📸" },
+                      { value: "horizontal_21_9", label: "21:9 울트라와이드", desc: "시네마", w: 2560, h: 1080, icon: "🎬" },
+                      { value: "vertical_2_3", label: "2:3 세로", desc: "핀터레스트", w: 1080, h: 1620, icon: "📌" },
+                    ].map((f) => (
+                      <button
+                        key={f.value}
+                        onClick={() => setFormat(f.value)}
+                        className={`p-2 rounded-lg text-center transition-all ${
+                          format === f.value
+                            ? "bg-ae-highlight/20 border-2 border-ae-highlight"
+                            : "bg-white/5 border-2 border-transparent hover:border-white/20"
+                        }`}
+                      >
+                        <div className="text-sm">{f.icon}</div>
+                        <div className="text-[10px] font-bold">{f.label}</div>
+                        <div className="text-[9px] text-white/40">{f.desc}</div>
+                        <div className="text-[8px] text-white/25">{f.w}x{f.h}</div>
+                      </button>
+                    ))}
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-white/50">FPS</label>
-                    <select
-                      className="select-field w-full text-sm"
-                      value={fps}
-                      onChange={(e) => setFps(parseInt(e.target.value))}
-                    >
-                      <option value={24} className="bg-ae-dark">24 fps</option>
-                      <option value={30} className="bg-ae-dark">30 fps</option>
-                      <option value={60} className="bg-ae-dark">60 fps</option>
-                    </select>
+                </div>
+
+                {/* FPS */}
+                <div className="space-y-1">
+                  <label className="text-xs text-white/50">FPS</label>
+                  <div className="flex gap-2">
+                    {[24, 30, 60].map((f) => (
+                      <button
+                        key={f}
+                        onClick={() => setFps(f)}
+                        className={`flex-1 py-1.5 rounded text-xs font-medium transition-all ${
+                          fps === f
+                            ? "bg-ae-highlight/20 border border-ae-highlight text-ae-highlight"
+                            : "bg-white/5 border border-transparent text-white/50"
+                        }`}
+                      >
+                        {f} fps
+                      </button>
+                    ))}
                   </div>
                 </div>
 

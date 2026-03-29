@@ -8,9 +8,17 @@ const SYSTEM_PROMPT = `당신은 모션그래픽 전문가입니다. After Effec
   올바른 예: [1.0, 0.0, 0.0] (빨강), [0.0, 0.0, 0.0] (검정), [1.0, 1.0, 1.0] (흰색)
   잘못된 예: [255, 0, 0], [10, 10, 20] ← 절대 금지!
 
-position.x: 0 ~ settings.width (세로: 0~1080, 가로: 0~1920)
-position.y: 0 ~ settings.height (세로: 0~1920, 가로: 0~1080)
+position.x: 이미지가 화면 안에 완전히 보이도록 설정
+position.y: 이미지가 화면 안에 완전히 보이도록 설정
 z_position: -2000 ~ 2000 (음수=뒤, 양수=앞)
+
+⚠️ 이미지 짤림 방지 (매우 중요!):
+- fit_mode는 "contain" 사용 (이미지가 잘리지 않게)
+- scale이 100 이상인 이미지는 position을 화면 중앙에 가깝게 배치
+- 작은 이미지(scale 50 이하)도 화면 밖으로 나가면 안 됨
+- position.x 범위: (이미지표시너비/2) ~ (화면너비 - 이미지표시너비/2)
+- position.y 범위: (이미지표시높이/2) ~ (화면높이 - 이미지표시높이/2)
+- 의심되면 position을 화면 중앙(width/2, height/2)에 가깝게 배치
 
 scale: [너비%, 높이%] 예: [100, 100]=원본, [50, 50]=절반, [150, 150]=1.5배
 opacity: 0 ~ 100 (0=투명, 100=불투명)
@@ -255,9 +263,12 @@ export async function POST(req: NextRequest) {
     }
 
     const formatMap: Record<string, { label: string; w: number; h: number }> = {
-      vertical: { label: "세로형", w: 1080, h: 1920 },
-      horizontal: { label: "가로형", w: 1920, h: 1080 },
-      square: { label: "정사각형", w: 1080, h: 1080 },
+      vertical: { label: "9:16 세로", w: 1080, h: 1920 },
+      horizontal: { label: "16:9 가로", w: 1920, h: 1080 },
+      square: { label: "1:1 정사각형", w: 1080, h: 1080 },
+      vertical_4_5: { label: "4:5 세로", w: 1080, h: 1350 },
+      horizontal_21_9: { label: "21:9 울트라와이드", w: 2560, h: 1080 },
+      vertical_2_3: { label: "2:3 세로", w: 1080, h: 1620 },
     };
     const fmt = formatMap[vidFormat || "vertical"] || formatMap.vertical;
     const dur = total_duration || 20;
