@@ -6,6 +6,7 @@ interface UploadedImage {
   file: File;
   dataUrl: string;
   name: string;
+  imageType: "source" | "storyboard"; // 소스 이미지 or 스토리보드
   cutoutDataUrl?: string;
   cutoutName?: string;
   isProcessing?: boolean;
@@ -223,7 +224,8 @@ export default function AiModePage() {
             resolve({
               file,
               dataUrl: e.target?.result as string,
-              name: safeName,  // AE 호환 영문 파일명
+              name: safeName,
+              imageType: "source" as const, // 기본값: 소스 이미지
             });
           };
           reader.readAsDataURL(file);
@@ -235,6 +237,16 @@ export default function AiModePage() {
 
   const removeImage = (index: number) => {
     setImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const toggleImageType = (index: number) => {
+    setImages((prev) =>
+      prev.map((img, i) =>
+        i === index
+          ? { ...img, imageType: img.imageType === "source" ? "storyboard" : "source" }
+          : img
+      )
+    );
   };
 
   // ── 배경 제거 (remove.bg API) ──
@@ -291,9 +303,9 @@ export default function AiModePage() {
     setError("");
 
     // 모든 이미지 (원본 + 컷아웃) 수집
-    const allImages: { name: string; data_url: string; is_cutout?: boolean }[] = [];
+    const allImages: { name: string; data_url: string; is_cutout?: boolean; image_type?: string }[] = [];
     for (const img of images) {
-      allImages.push({ name: img.name, data_url: img.dataUrl });
+      allImages.push({ name: img.name, data_url: img.dataUrl, image_type: img.imageType });
       if (img.cutoutDataUrl && img.cutoutName) {
         allImages.push({ name: img.cutoutName, data_url: img.cutoutDataUrl, is_cutout: true });
       }
@@ -334,14 +346,16 @@ export default function AiModePage() {
   // ── 수동 모드: 프롬프트 복사 ──
   const generatePrompt = () => {
     const hasCutoutsAvailable = images.some((img) => img.cutoutName);
+    const storyboards = images.filter((img) => img.imageType === "storyboard");
+    const sourceImages = images.filter((img) => img.imageType === "source");
 
-    const imageList = images.map((img, i) => {
-      let line = `${i + 1}. ${img.name}`;
-      if (img.cutoutName && img.cutoutDataUrl) {
-        line += `\n   ${img.cutoutName} (배경 제거됨)`;
-      }
+    const storyboardList = storyboards.map((img, i) => `  📋 ${img.name} (스토리보드)`).join("\n");
+    const sourceList = sourceImages.map((img, i) => {
+      let line = `  🖼️ ${img.name} (소스 이미지)`;
+      if (img.cutoutName && img.cutoutDataUrl) line += `\n     ${img.cutoutName} (배경 제거됨)`;
       return line;
     }).join("\n");
+    const imageList = [storyboardList, sourceList].filter(Boolean).join("\n");
 
     const formatMap: Record<string, string> = {
       vertical: "세로형 (1080x1920)",
@@ -349,7 +363,7 @@ export default function AiModePage() {
       square: "정사각형 (1080x1080)",
     };
 
-    return `다음 이미지들로 ancrid 수준의 고퀄리티 모션그래픽 영상용 JSON을 생성해주세요.
+    return `이미지들을 분석하여 ancrid 수준의 고퀄리티 모션그래픽 JSON을 생성해주세요.
 
 ## 프로젝트 설정
 - 스타일: ${style}
@@ -358,9 +372,21 @@ export default function AiModePage() {
 - 전체 영상 길이: ${videoDuration}초 (settings.total_duration = ${videoDuration})
 ${description ? `- 설명: ${description}` : "- 이미지를 분석해서 내용에 맞게 자동 판단해주세요"}
 
-## 사용 가능한 이미지 파일 (이 파일명만 사용!)
+## 업로드된 이미지 (이 파일명만 사용!)
 ${imageList}
 ${hasCutoutsAvailable ? "※ _cutout.png 파일은 배경 제거된 객체입니다" : ""}
+${storyboards.length > 0 ? `
+## 중요: 스토리보드 분석 지시
+📋 표시된 이미지는 스토리보드입니다. 이 이미지를 자세히 분석하여:
+1. 스토리보드에 그려진 레이아웃/배치를 그대로 따라하세요
+2. 화살표가 있으면 → 해당 방향으로 애니메이션 (slide, pan 등)
+3. 텍스트가 적혀있으면 → 그 텍스트를 그 위치에 배치
+4. 위치/크기 표시가 있으면 → position/scale에 반영
+5. 동작 지시(줌, 회전, 이동 등)가 있으면 → animation/entrance에 반영
+6. 번호나 순서가 있으면 → 씬 순서와 등장 순서(delay)에 반영
+7. 스토리보드 이미지 자체는 영상에 사용하지 말 것 (참고용!)
+8. 🖼️ 소스 이미지만 영상의 레이어로 사용하세요
+` : ""}
 
 ## 핵심: 모든 이미지를 하나의 영상에서 다양하게 연출!
 
@@ -642,10 +668,25 @@ JSON만 출력해주세요.`;
               {images.length > 0 && (
                 <div className="mt-3 space-y-2">
                   {images.map((img, i) => (
-                    <div key={i} className="flex items-center gap-3 bg-white/5 rounded-lg p-2">
+                    <div key={i} className={`flex items-center gap-3 rounded-lg p-2 ${
+                      img.imageType === "storyboard"
+                        ? "bg-ae-purple/10 border border-ae-purple/30"
+                        : "bg-white/5"
+                    }`}>
                       <img src={img.dataUrl} alt="" className="w-12 h-12 rounded object-cover flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <div className="text-xs truncate">{img.name}</div>
+                        {/* 이미지 타입 토글 */}
+                        <button
+                          onClick={() => toggleImageType(i)}
+                          className={`mt-1 text-[10px] px-2 py-0.5 rounded-full transition-all ${
+                            img.imageType === "storyboard"
+                              ? "bg-ae-purple/30 text-ae-purple border border-ae-purple/40"
+                              : "bg-white/10 text-white/50 border border-white/10 hover:border-white/30"
+                          }`}
+                        >
+                          {img.imageType === "storyboard" ? "📋 스토리보드" : "🖼️ 소스 이미지"}
+                        </button>
                         {img.cutoutDataUrl ? (
                           <div className="flex items-center gap-2 mt-1">
                             <img src={img.cutoutDataUrl} alt="" className="w-8 h-8 rounded object-contain bg-[#333] flex-shrink-0" />
@@ -658,6 +699,9 @@ JSON만 출력해주세요.`;
                       <button onClick={() => removeImage(i)} className="text-red-400/60 hover:text-red-400 text-xs px-2">✕</button>
                     </div>
                   ))}
+                  <div className="text-[10px] text-white/30 text-center">
+                    클릭하여 이미지 타입 변경: <span className="text-ae-purple">📋 스토리보드</span> = 연출 지시서 / <span className="text-white/50">🖼️ 소스</span> = 영상에 사용할 이미지
+                  </div>
                 </div>
               )}
 

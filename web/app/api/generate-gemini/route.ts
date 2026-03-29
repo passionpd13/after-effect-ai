@@ -231,7 +231,7 @@ export async function POST(req: NextRequest) {
       fps,
     }: {
       api_key: string;
-      images: { name: string; data_url: string; is_cutout?: boolean }[];
+      images: { name: string; data_url: string; is_cutout?: boolean; image_type?: string }[];
       style: string;
       description: string;
       total_duration: number;
@@ -280,35 +280,52 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const storyboards = images.filter((img) => img.image_type === "storyboard");
+    const sourceImages = images.filter((img) => img.image_type !== "storyboard");
+
     const imageList = images
       .map((img) => {
+        if (img.image_type === "storyboard") return `📋 ${img.name} (스토리보드 - 연출 참고용, 영상에 사용 금지)`;
         const tag = img.is_cutout ? " (배경 제거됨)" : "";
-        return `- ${img.name}${tag}`;
+        return `🖼️ ${img.name}${tag} (소스 이미지 - 영상에 사용)`;
       })
       .join("\n");
 
+    const storyboardInstruction = storyboards.length > 0 ? `
+## 스토리보드 분석 (매우 중요!)
+📋 표시된 이미지는 스토리보드(연출 기획서)입니다. 반드시 자세히 분석하세요:
+- 스토리보드에 그려진 레이아웃/배치를 최대한 따라하세요
+- 화살표가 그려져 있으면 → 해당 방향으로 움직이는 애니메이션 적용
+- 텍스트가 적혀있으면 → 그 텍스트를 그 위치에 배치 (한국어로)
+- 위치/크기 표시가 있으면 → position/scale 값에 반영
+- 동작 지시(줌, 회전, 이동)가 있으면 → animation/entrance에 반영
+- 번호나 순서가 있으면 → 씬 순서와 등장 delay에 반영
+- 스토리보드 이미지 자체는 영상 레이어로 사용하지 마세요!
+- 🖼️ 소스 이미지만 image_source.file에 사용하세요
+` : "";
+
     parts.push({
-      text: `이 이미지들로 ancrid 수준의 고퀄리티 모션그래픽 JSON을 생성해주세요.
+      text: `이미지들을 분석하여 모션그래픽 JSON을 생성해주세요.
 
 스타일: ${style}
 포맷: ${fmt.label} (${fmt.w}x${fmt.h}), FPS: ${fpsVal}
 전체 영상 길이: ${dur}초 (settings.total_duration = ${dur})
 ${description ? `설명: ${description}` : "이미지를 분석하여 자동으로 판단해주세요."}
 
-사용 가능한 파일:
+업로드된 이미지:
 ${imageList}
-
+${storyboardInstruction}
 핵심 요구사항:
-1. 이미지 1장 = 씬 1개 금지! 한 씬에 여러 이미지를 동시 배치. 씬 수는 자유롭게 (3~8개)
-2. 매 씬마다 화살표, 강조박스, 밑줄, 원 등 도형 shape 레이어 필수
-3. 다양한 레이아웃 (전체화면, 좌우분할, PIP, 격자, 대각선 등)
-4. 레이어마다 서로 다른 entrance 사용 (fade_in만 반복 금지)
-5. 이미지를 다양한 위치/크기로 배치 (중앙만 X)
-6. 씬당 최소 5개 이상 레이어
-7. 위 파일명만 정확히 사용 (존재하지 않는 파일명 금지)
-8. settings: width=${fmt.w}, height=${fmt.h}, fps=${fpsVal}, total_duration=${dur}
-9. 모든 씬의 duration 합계 = ${dur}초 (씬 수와 개별 길이는 자유롭게)
-10. 텍스트는 한국어, 세부 타이밍은 자유롭게
+1. 각 이미지의 내용을 분석하세요 (인물, 사물, 텍스트, 배경 등 무엇이 있는지)
+2. 이미지 내용에 맞는 연출을 해주세요 (인물→float, 무기→slide_in, 지도→zoom 등)
+3. 한 씬에 여러 이미지 동시 배치. 이미지 1장 = 씬 1개 금지!
+4. 매 씬마다 화살표, 강조박스 등 도형 shape 레이어 필수
+5. 다양한 레이아웃 (전체화면, 좌우분할, PIP, 격자 등)
+6. 레이어마다 서로 다른 entrance (fade_in만 반복 금지)
+7. 씬당 최소 5개 이상 레이어
+8. 🖼️ 소스 이미지 파일명만 image_source.file에 사용 (📋 스토리보드 파일명 사용 금지!)
+9. settings: width=${fmt.w}, height=${fmt.h}, fps=${fpsVal}, total_duration=${dur}
+10. 텍스트는 한국어
 
 JSON만 출력.`,
     });
