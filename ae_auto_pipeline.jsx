@@ -676,24 +676,89 @@ function handleAudio(comp, data) {
 // ============================================================
 function addToRenderQueue(comp, renderSettings) {
     var renderItem = app.project.renderQueue.items.add(comp);
-    
+
     // 출력 모듈 설정
     var outputModule = renderItem.outputModule(1);
-    
+
     var format = renderSettings.output_format || "mp4";
+
+    // AE 2023+ 에서는 H.264 템플릿이 제거됨
+    // 사용 가능한 템플릿 목록에서 자동으로 찾아 적용
+    var templateApplied = false;
+
     if (format === "mp4") {
-        outputModule.applyTemplate("H.264");
+        // H.264 관련 템플릿 이름 후보 (AE 버전별로 다름)
+        var mp4Templates = [
+            "H.264",
+            "H.264 - Match Render Settings - 15 Mbps",
+            "H.264 - Match Render Settings",
+            "MPEG4"
+        ];
+        var availableTemplates = outputModule.templates;
+        for (var t = 0; t < mp4Templates.length; t++) {
+            for (var a = 0; a < availableTemplates.length; a++) {
+                if (availableTemplates[a] === mp4Templates[t]) {
+                    try {
+                        outputModule.applyTemplate(mp4Templates[t]);
+                        templateApplied = true;
+                        break;
+                    } catch(e) {}
+                }
+            }
+            if (templateApplied) break;
+        }
+
+        // H.264 템플릿을 찾지 못한 경우 (AE 2023+)
+        // Lossless로 렌더링 후 Media Encoder로 변환하도록 안내
+        if (!templateApplied) {
+            try {
+                outputModule.applyTemplate("Lossless");
+                templateApplied = true;
+            } catch(e2) {}
+
+            alert(
+                "안내: AE 2023 이상 버전에서는 H.264 렌더 템플릿이 제거되었습니다.\n\n" +
+                "Lossless(무손실)로 렌더 큐에 추가했습니다.\n\n" +
+                "MP4로 출력하려면:\n" +
+                "1. 컴포지션 > Adobe Media Encoder에 추가 (Ctrl+Alt+M)\n" +
+                "2. Media Encoder에서 H.264 프리셋 선택\n" +
+                "3. 렌더링 시작\n\n" +
+                "또는 렌더 큐에서 바로 렌더링하면 AVI/MOV로 출력됩니다."
+            );
+        }
     } else if (format === "mov") {
-        outputModule.applyTemplate("Apple ProRes 422");
+        var movTemplates = ["Apple ProRes 422", "Apple ProRes 422 HQ", "Lossless"];
+        var availableTemplates2 = outputModule.templates;
+        for (var t2 = 0; t2 < movTemplates.length; t2++) {
+            for (var a2 = 0; a2 < availableTemplates2.length; a2++) {
+                if (availableTemplates2[a2] === movTemplates[t2]) {
+                    try {
+                        outputModule.applyTemplate(movTemplates[t2]);
+                        templateApplied = true;
+                        break;
+                    } catch(e3) {}
+                }
+            }
+            if (templateApplied) break;
+        }
     }
-    
+
+    // 어떤 템플릿도 적용 못한 경우 기본 템플릿 사용
+    if (!templateApplied) {
+        try {
+            outputModule.applyTemplate("Lossless");
+        } catch(e4) {
+            // 기본 템플릿 그대로 사용
+        }
+    }
+
     // 출력 경로
     var outputPath = new File(
-        Folder.desktop.fsName + "/" + 
+        Folder.desktop.fsName + "/" +
         (renderSettings.output_filename || comp.name + "." + format)
     );
     outputModule.file = outputPath;
-    
+
     return renderItem;
 }
 
