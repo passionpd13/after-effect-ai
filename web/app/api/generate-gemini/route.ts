@@ -53,12 +53,11 @@ JSX가 joints를 분석하여 자동 적용합니다:
 - 머리와 몸통: 60~90° 차이
 - 꼬리: 30~60° 씩 증가 (파동)
 
-=== 값 범위 ===
-joint.amount: 1 ~ 10 (★ 대부분 2~5가 적절! 10 이상은 극히 드물게)
-joint.speed: 0.2 ~ 1.0 (★ 대부분 0.3~0.6이 적절! 1.0 이상은 shake 전용)
+=== 값 범위 (매우 중요!) ===
+joint.amount: 1 ~ 8 (★ 대부분 2~5가 적절! 8 초과 절대 금지!)
+joint.speed: 0.2 ~ 0.8 (★ 대부분 0.3~0.5가 적절!)
 joint.phase: 0 ~ 360 (위상 오프셋)
-wiggle.frequency: 0.5 ~ 2 (★ 낮을수록 자연스러움)
-wiggle.amount: 0.3 ~ 2 (★ 거의 안 보일 정도)
+★ wiggle_elements, expression_links, bend_zones는 사용하지 마세요! joints만 사용!
 
 === JSON 구조 ===
 {
@@ -90,13 +89,11 @@ wiggle.amount: 0.3 ~ 2 (★ 거의 안 보일 정도)
           "id": "char_1",
           "type": "puppet",
           "name": "캐릭터 이름",
-          "rig_mode": "advanced",
-          "action": "",
           "image_source": { "file": "실제파일명.확장자", "fit_mode": "cover" },
           "transform": { "position": {"x": 960, "y": 540}, "scale": [100, 100], "opacity": 100 },
           "entrance": { "type": "fade_in", "delay": 0, "duration": 0.5, "easing": "ease_out" },
           "joints": [
-            { "name": "head", "part": "head", "x": 540, "y": 120, "motion": "nod", "amount": 2, "speed": 0.35, "phase": 90 },
+            { "name": "head", "part": "head", "x": 540, "y": 120, "motion": "nod", "amount": 3, "speed": 0.35, "phase": 90 },
             { "name": "body", "part": "torso", "x": 540, "y": 350, "motion": "breathe", "amount": 2, "speed": 0.3, "phase": 0 },
             { "name": "right_arm", "part": "right_arm", "x": 700, "y": 300, "motion": "swing", "amount": 4, "speed": 0.4, "phase": 0 },
             { "name": "left_arm", "part": "left_arm", "x": 380, "y": 300, "motion": "swing", "amount": 4, "speed": 0.4, "phase": 180 },
@@ -105,9 +102,6 @@ wiggle.amount: 0.3 ~ 2 (★ 거의 안 보일 정도)
           "fixed_pins": [
             { "name": "feet_left", "x": 480, "y": 700 },
             { "name": "feet_right", "x": 600, "y": 700 }
-          ],
-          "wiggle_elements": [
-            { "property": "rotation", "frequency": 0.8, "amount": 0.2 }
           ]
         }
       ],
@@ -544,21 +538,20 @@ ${fileList}
 
 요구사항:
 ★★★ 가장 중요: 원본 이미지가 반드시 화면에 보여야 합니다! ★★★
-1. **fit_mode: "cover"** 필수! 원본 이미지가 화면을 꽉 채워야 합니다
+1. **fit_mode: "cover"** 필수! 원본 이미지가 화면을 꽉 채움
 2. **transform.position: {"x": ${fmt.w / 2}, "y": ${fmt.h / 2}}** (정확히 컴포지션 중앙)
-3. **transform.scale: [100, 100], opacity: 100** (cover 스케일은 JSX가 자동 처리)
-4. 이미지 1장 = 씬 1개, 각 씬에 puppet 레이어 1개만 (텍스트/도형 레이어 추가 금지!)
-5. 각 이미지를 **정밀 분석**하여 캐릭터의 관절을 식별: 머리, 목, 몸통, 팔(좌/우), 손(좌/우), 다리(좌/우), 소품 등
-6. **joints 배열** 사용: 각 관절에 name, part, x, y, motion, amount, speed, phase 설정
-7. **x, y 좌표는 컴포지션 기준** (가로형: 0~${fmt.w}, 0~${fmt.h})
-8. **phase가 핵심**: 좌우 대칭 부위는 180° 차이, 연결 부위는 30~90° 차이
-9. rig_mode: "advanced" (관절별 상세 설정)
-10. fixed_pins로 발/바닥 접점 반드시 고정
-11. 관절은 이미지당 8~15개 (충분히 상세하게!)
-12. settings: width=${fmt.w}, height=${fmt.h}, fps=${fpsVal}, total_duration=${dur}
-13. transition_to_next: crossfade (duration 0.5)
-14. entrance: fade_in만 사용
-15. wiggle_elements로 미세한 자연스러운 떨림 추가
+3. **transform.scale: [100, 100], opacity: 100**
+4. 이미지 1장 = 씬 1개, puppet 레이어 1개만 (텍스트/도형 금지!)
+5. **joints 배열**에 각 관절: name, part, x, y, motion, amount, speed, phase
+6. **x, y 좌표는 컴포지션 기준** (가로: 0~${fmt.w}, 0~${fmt.h})
+7. **amount는 2~5** (매우 미세하게! 이미지가 거의 원본 그대로 보여야 함)
+8. **speed는 0.3~0.5** (느리게!)
+9. 관절은 3~6개 (핵심 부위만! 너무 많으면 이미지 왜곡)
+10. fixed_pins로 바닥/발 고정
+11. settings: width=${fmt.w}, height=${fmt.h}, fps=${fpsVal}, total_duration=${dur}
+12. transition_to_next: crossfade (duration 0.5)
+13. entrance: fade_in만 사용
+14. ★ wiggle_elements, bend_zones, expression_links 사용 금지! joints만!
 
 JSON만 출력.`,
       });
