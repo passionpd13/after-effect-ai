@@ -233,7 +233,7 @@ export async function POST(req: NextRequest) {
       fps,
     }: {
       api_key: string;
-      images: { name: string; data_url: string; is_cutout?: boolean }[];
+      images: { name: string; data_url: string; is_cutout?: boolean; image_type?: string }[];
       style: string;
       description: string;
       total_duration: number;
@@ -284,10 +284,18 @@ export async function POST(req: NextRequest) {
 
     const imageList = images
       .map((img) => {
-        const tag = img.is_cutout ? " (배경 제거됨)" : "";
-        return `- ${img.name}${tag}`;
+        const tags: string[] = [];
+        if (img.is_cutout) tags.push("배경 제거됨");
+        if (img.image_type === "background") tags.push("배경용");
+        const tagStr = tags.length > 0 ? ` (${tags.join(", ")})` : "";
+        return `- ${img.name}${tagStr}`;
       })
       .join("\n");
+
+    const bgImages = images.filter((img) => img.image_type === "background");
+    const bgNote = bgImages.length > 0
+      ? `\n배경 이미지: ${bgImages.map((img) => img.name).join(", ")} → 반드시 layers 배열 마지막에 배치, z_position: -2000, effects 금지, opacity: 100`
+      : "";
 
     parts.push({
       text: `이 이미지들로 ancrid 수준의 고퀄리티 모션그래픽 JSON을 생성해주세요.
@@ -298,7 +306,7 @@ export async function POST(req: NextRequest) {
 ${description ? `설명: ${description}` : "이미지를 분석하여 자동으로 판단해주세요."}
 
 사용 가능한 파일:
-${imageList}
+${imageList}${bgNote}
 
 핵심 요구사항:
 1. 이미지 1장 = 씬 1개 금지! 한 씬에 여러 이미지를 동시 배치. 씬 수는 자유롭게 (3~8개)
