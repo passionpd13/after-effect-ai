@@ -49,10 +49,24 @@ export default function AnimatePage() {
     } catch {}
   }, [geminiKey, geminiModel]);
 
-  // 파일명 정리
-  const sanitizeFileName = useCallback((name: string, index: number): string => {
+  // MIME 타입으로 실제 확장자 결정
+  const mimeToExt = useCallback((mimeType: string): string => {
+    const map: Record<string, string> = {
+      "image/png": ".png",
+      "image/jpeg": ".jpg",
+      "image/jpg": ".jpg",
+      "image/webp": ".webp",
+      "image/gif": ".gif",
+      "image/bmp": ".bmp",
+      "image/tiff": ".tiff",
+    };
+    return map[mimeType] || ".png";
+  }, []);
+
+  // 파일명 정리 (실제 MIME 타입 기반 확장자 사용)
+  const sanitizeFileName = useCallback((name: string, index: number, actualMime: string): string => {
     const lastDot = name.lastIndexOf(".");
-    const ext = lastDot >= 0 ? name.slice(lastDot).toLowerCase() : ".png";
+    const ext = mimeToExt(actualMime);
     const base = lastDot >= 0 ? name.slice(0, lastDot) : name;
     const cleaned = base
       .replace(/[가-힣ㄱ-ㅎㅏ-ㅣ]/g, "")
@@ -61,7 +75,7 @@ export default function AnimatePage() {
       .replace(/_+/g, "_")
       .replace(/^_|_$/g, "");
     return (cleaned || `character_${index + 1}`) + ext;
-  }, []);
+  }, [mimeToExt]);
 
   const handleImageUpload = useCallback((files: FileList | null) => {
     if (!files) return;
@@ -77,7 +91,7 @@ export default function AnimatePage() {
             resolve({
               file,
               dataUrl: e.target?.result as string,
-              name: sanitizeFileName(file.name, safeIndex),
+              name: sanitizeFileName(file.name, safeIndex, file.type),
             });
           };
           reader.readAsDataURL(file);
