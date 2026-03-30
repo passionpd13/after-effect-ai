@@ -118,9 +118,9 @@ export default function AnimatePage() {
           model: geminiModel,
           images: allImages,
           style: "cinematic",
-          description: (description ? description + "\n" : "") + "중요: 캐릭터 이미지 1장 = 씬 1개로 만들어주세요. 이미지 " + images.length + "장이면 씬 " + images.length + "개. 각 씬에서 해당 이미지의 캐릭터를 type: \"puppet\"으로 Puppet Pin 애니메이션 적용. 각 씬 duration은 균등 분배.",
-          total_duration: animationDuration,
-          scene_duration: Math.round(animationDuration / images.length),
+          description: (description ? description + "\n" : "") + "중요: 캐릭터 이미지 1장 = 씬 1개로 만들어주세요. 이미지 " + images.length + "장이면 씬 " + images.length + "개. 각 씬에서 해당 이미지의 캐릭터를 type: \"puppet\"으로 Puppet Pin 애니메이션 적용. 각 씬 duration = " + animationDuration + "초. 하나의 연결된 영상으로 씬 간 자연스러운 전환(crossfade) 적용.",
+          total_duration: animationDuration * images.length,
+          scene_duration: animationDuration,
           format: "horizontal",
           fps: 30,
         }),
@@ -268,7 +268,7 @@ export default function AnimatePage() {
                       <img src={img.dataUrl} alt="" className="w-16 h-16 rounded object-contain bg-[#222] flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <div className="text-xs truncate">{img.name}</div>
-                        <div className="text-[10px] text-green-400/70 mt-0.5">🦴 Puppet Pin 애니메이션</div>
+                        <div className="text-[10px] text-green-400/70 mt-0.5">씬 {i + 1} · {animationDuration}초 · Puppet Pin</div>
                       </div>
                       <button onClick={() => removeImage(i)} className="text-red-400/60 hover:text-red-400 text-xs px-2">✕</button>
                     </div>
@@ -282,7 +282,7 @@ export default function AnimatePage() {
               <h2 className="text-base font-bold mb-3">설정</h2>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-xs text-white/50">애니메이션 길이</label>
+                  <label className="text-xs text-white/50">장당 애니메이션 길이</label>
                   <div className="flex items-center gap-3">
                     <input
                       type="range"
@@ -361,7 +361,7 @@ export default function AnimatePage() {
               </button>
               {images.length > 0 && (
                 <div className="mt-2 text-[10px] text-white/40 text-center">
-                  {images.length}개 캐릭터 이미지 → Puppet Pin + Wiggle + CC Bend 자동 적용
+                  {images.length}개 이미지 × {animationDuration}초 = 총 {images.length * animationDuration}초 영상 (씬 간 crossfade 전환)
                 </div>
               )}
             </div>
