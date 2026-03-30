@@ -189,11 +189,24 @@ export default function AiModePage() {
   // 배경 제거 진행률
   const [bgRemoveProgress, setBgRemoveProgress] = useState({ done: 0, total: 0 });
 
-  // 파일명을 AE 호환 영문으로 자동 변환
-  const sanitizeFileName = useCallback((name: string, index: number): string => {
-    // 확장자 분리
+  // MIME 타입으로 실제 확장자 결정 (파일 내용과 확장자 불일치 방지)
+  const mimeToExt = useCallback((mimeType: string): string => {
+    const map: Record<string, string> = {
+      "image/png": ".png",
+      "image/jpeg": ".jpg",
+      "image/jpg": ".jpg",
+      "image/webp": ".webp",
+      "image/gif": ".gif",
+      "image/bmp": ".bmp",
+      "image/tiff": ".tiff",
+    };
+    return map[mimeType] || ".png";
+  }, []);
+
+  // 파일명을 AE 호환 영문으로 자동 변환 (실제 MIME 기반 확장자)
+  const sanitizeFileName = useCallback((name: string, index: number, actualMime: string): string => {
     const lastDot = name.lastIndexOf(".");
-    const ext = lastDot >= 0 ? name.slice(lastDot).toLowerCase() : ".png";
+    const ext = mimeToExt(actualMime);
     const base = lastDot >= 0 ? name.slice(0, lastDot) : name;
 
     // 영문/숫자/밑줄만 남기기
@@ -207,7 +220,7 @@ export default function AiModePage() {
     // 영문이 아무것도 안 남으면 image_N으로 대체
     const safeName = cleaned || `image_${index + 1}`;
     return safeName + ext;
-  }, []);
+  }, [mimeToExt]);
 
   const handleImageUpload = useCallback((files: FileList | null) => {
     if (!files) return;
@@ -220,11 +233,11 @@ export default function AiModePage() {
         new Promise((resolve) => {
           const reader = new FileReader();
           reader.onload = (e) => {
-            const safeName = sanitizeFileName(file.name, safeIndex);
+            const safeName = sanitizeFileName(file.name, safeIndex, file.type);
             resolve({
               file,
               dataUrl: e.target?.result as string,
-              name: safeName,  // AE 호환 영문 파일명
+              name: safeName,  // AE 호환 영문 파일명 (실제 MIME 기반 확장자)
               imageType: "source",
             });
           };
