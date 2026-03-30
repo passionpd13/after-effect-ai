@@ -1508,18 +1508,31 @@ function processV2(comp, data, projectFolder) {
 
                     // ★★★ CC Bend It 관절 애니메이션 ★★★
                     // AI joints가 있으면 사용, 없으면 스마트 기본값 자동 적용
+                    // ★ 좌표 시스템: 퍼센트(0~100) 또는 픽셀 자동 감지
                     var joints = layerDef.joints || layerDef.pins || [];
                     var bendIdx = 0;
                     var maxBends = 6;
 
-                    // joints가 없거나 비어있으면 → 이미지 위치 기반 기본 관절 자동 생성
+                    // joints가 없거나 비어있으면 → 기본 관절 자동 생성 (퍼센트 좌표)
                     if (joints.length === 0) {
                         joints = [
-                            { name: "head", part: "head", x: comp.width * 0.4, y: comp.height * 0.2, motion: "nod", amount: 10, speed: 0.5, phase: 0 },
-                            { name: "body", part: "torso", x: comp.width * 0.4, y: comp.height * 0.45, motion: "breathe", amount: 6, speed: 0.3, phase: 90 },
-                            { name: "arm", part: "right_arm", x: comp.width * 0.55, y: comp.height * 0.35, motion: "swing", amount: 12, speed: 0.5, phase: 0 }
+                            { name: "head", part: "head", x: 50, y: 15, motion: "nod", amount: 10, speed: 0.5, phase: 0 },
+                            { name: "body", part: "torso", x: 50, y: 40, motion: "breathe", amount: 6, speed: 0.3, phase: 90 },
+                            { name: "arm", part: "right_arm", x: 65, y: 35, motion: "swing", amount: 12, speed: 0.5, phase: 0 }
                         ];
                         log.push("    ★ joints 없음 → 기본 관절 3개 자동 생성");
+                    }
+
+                    // ★ 좌표가 퍼센트(0~100)인지 픽셀인지 자동 감지
+                    // 모든 x,y가 100 이하면 퍼센트로 판단
+                    var usePercent = true;
+                    for (var ci = 0; ci < joints.length; ci++) {
+                        var cx = Number(joints[ci].x) || 0;
+                        var cy = Number(joints[ci].y) || 0;
+                        if (cx > 100 || cy > 100) { usePercent = false; break; }
+                    }
+                    if (usePercent) {
+                        log.push("    ★ 퍼센트 좌표 감지 → 픽셀로 자동 변환");
                     }
 
                     for (var ji = 0; ji < joints.length && bendIdx < maxBends; ji++) {
@@ -1530,8 +1543,11 @@ function processV2(comp, data, projectFolder) {
                             var jSpeed = Number(jDef.speed) || 0.5;
                             var jPhase = (Number(jDef.phase) || 0) * Math.PI / 180;
                             var jPart = jDef.part || jDef.name || "body";
-                            var jx = Number(jDef.x) || (comp.width / 2);
-                            var jy = Number(jDef.y) || (comp.height / 2);
+                            var rawX = Number(jDef.x) || 50;
+                            var rawY = Number(jDef.y) || 50;
+                            // 퍼센트 → 픽셀 변환
+                            var jx = usePercent ? (rawX / 100) * comp.width : rawX;
+                            var jy = usePercent ? (rawY / 100) * comp.height : rawY;
 
                             // ★ 최소값 보장 (안 보이는 것 방지)
                             jAmount = Math.max(jAmount, 5);  // 최소 5도
