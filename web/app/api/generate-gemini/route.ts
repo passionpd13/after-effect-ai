@@ -287,14 +287,19 @@ export async function POST(req: NextRequest) {
         const tags: string[] = [];
         if (img.is_cutout) tags.push("배경 제거됨");
         if (img.image_type === "background") tags.push("배경용");
+        if (img.image_type === "storyboard") tags.push("스토리보드 - 연출 참고용");
         const tagStr = tags.length > 0 ? ` (${tags.join(", ")})` : "";
         return `- ${img.name}${tagStr}`;
       })
       .join("\n");
 
     const bgImages = images.filter((img) => img.image_type === "background");
+    const storyboardImages = images.filter((img) => img.image_type === "storyboard");
     const bgNote = bgImages.length > 0
       ? `\n배경 이미지: ${bgImages.map((img) => img.name).join(", ")} → 반드시 layers 배열 마지막에 배치, z_position: -2000, effects 금지, opacity: 100`
+      : "";
+    const storyboardNote = storyboardImages.length > 0
+      ? `\n스토리보드 이미지: ${storyboardImages.map((img) => img.name).join(", ")} → 연출 참고용 (화살표, 텍스트, 레이아웃 지시를 분석하여 반영). 영상에 직접 사용 금지!`
       : "";
 
     parts.push({
@@ -306,7 +311,7 @@ export async function POST(req: NextRequest) {
 ${description ? `설명: ${description}` : "이미지를 분석하여 자동으로 판단해주세요."}
 
 사용 가능한 파일:
-${imageList}${bgNote}
+${imageList}${bgNote}${storyboardNote}
 
 핵심 요구사항:
 1. 이미지 1장 = 씬 1개 금지! 한 씬에 여러 이미지를 동시 배치. 씬 수는 자유롭게 (3~8개)
