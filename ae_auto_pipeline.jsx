@@ -1200,12 +1200,12 @@ function processV2(comp, data, projectFolder) {
               }
             }
 
-            // --- Puppet Pin 캐릭터 레이어 ---
+            // --- Puppet Pin 캐릭터 레이어 (CC Bend It + Transform 키프레임 방식) ---
             if (layerDef.type === "puppet" && layerDef.image_source && layerDef.image_source.file) {
               try {
                 var puppetFileName = layerDef.image_source.file;
                 var puppetPath = new File(projectFolder + "/" + puppetFileName);
-                log.push("  퍼펫: " + puppetFileName);
+                log.push("  캐릭터: " + puppetFileName);
 
                 if (!puppetPath.exists) {
                     errorLog.push("씬 " + (si+1) + " puppet '" + (layerDef.name || layerDef.id) + "': 파일 없음 → " + puppetPath.fsName);
@@ -1222,122 +1222,148 @@ function processV2(comp, data, projectFolder) {
                     var pFitMode = layerDef.image_source.fit_mode || "contain";
                     var pSrcW = puppetFootage.width;
                     var pSrcH = puppetFootage.height;
+                    var pBaseScale = 100;
                     if (pSrcW > 0 && pSrcH > 0) {
-                        var pScale;
                         if (pFitMode === "cover") {
-                            pScale = Math.max(comp.width / pSrcW, comp.height / pSrcH) * 100;
+                            pBaseScale = Math.max(comp.width / pSrcW, comp.height / pSrcH) * 100;
                         } else {
-                            pScale = Math.min(comp.width / pSrcW, comp.height / pSrcH) * 100;
+                            pBaseScale = Math.min(comp.width / pSrcW, comp.height / pSrcH) * 100;
                         }
-                        aeLayer.property("Scale").setValue([pScale, pScale]);
+                        aeLayer.property("Scale").setValue([pBaseScale, pBaseScale]);
                     }
 
-                    // Puppet Effect 추가
-                    var puppetEffect = aeLayer.property("Effects").addProperty("Puppet");
+                    // === 핀 분석: 모션별 분류 ===
+                    var hasBreath = false;
+                    var hasNod = false;
+                    var hasSway = false;
+                    var bendPins = [];
 
-                    // Advanced Engine 사용 시도 (AE CC 이상)
-                    try {
-                        var puppetEngine = puppetEffect.property("Puppet Engine");
-                        // Mesh 1 접근
-                        var meshGroup = puppetEngine.property("Mesh 1");
-                        var deformGroup = meshGroup.property("Deform");
+                    if (layerDef.pins && layerDef.pins.length > 0) {
+                        for (var pi = 0; pi < layerDef.pins.length; pi++) {
+                            var pinDef = layerDef.pins[pi];
+                            var pMotion = pinDef.motion || "breathe";
+                            var pAmount = Number(pinDef.amount) || 5;
+                            var pSpeed = Number(pinDef.speed) || 0.8;
 
-                        // 움직이는 핀 추가
-                        if (layerDef.pins && layerDef.pins.length > 0) {
-                            for (var pi = 0; pi < layerDef.pins.length; pi++) {
-                                var pinDef = layerDef.pins[pi];
-                                var puppetPin = deformGroup.addProperty("Puppet Pin");
-                                var pinPos = puppetPin.property("Position");
-                                var px = Number(pinDef.x) || 0;
-                                var py = Number(pinDef.y) || 0;
-                                var pAmount = Number(pinDef.amount) || 5;
-                                var pSpeed = Number(pinDef.speed) || 0.8;
-                                var pMotion = pinDef.motion || "breathe";
+                            if (pMotion === "breathe") hasBreath = { amount: pAmount, speed: pSpeed };
+                            else if (pMotion === "nod") hasNod = { amount: pAmount, speed: pSpeed };
+                            else if (pMotion === "swing" || pMotion === "sway") hasSway = { amount: pAmount, speed: pSpeed };
 
-                                // 모션 프리셋별 키프레임 생성
-                                var cycleDur = 1.0 / pSpeed;
-                                var numCycles = Math.ceil(sceneDur / cycleDur);
-
-                                if (pMotion === "nod") {
-                                    // 상하 끄덕임
-                                    for (var ci = 0; ci <= numCycles * 4; ci++) {
-                                        var ct = currentTime + (ci * cycleDur / 4);
-                                        if (ct > currentTime + sceneDur) break;
-                                        var phase = ci % 4;
-                                        var yOff = (phase === 1) ? -pAmount : (phase === 3) ? pAmount : 0;
-                                        pinPos.setValueAtTime(ct, [px, py + yOff]);
-                                    }
-                                } else if (pMotion === "swing") {
-                                    // 좌우 진자 흔들림
-                                    for (var ci = 0; ci <= numCycles * 4; ci++) {
-                                        var ct = currentTime + (ci * cycleDur / 4);
-                                        if (ct > currentTime + sceneDur) break;
-                                        var phase = ci % 4;
-                                        var xOff = (phase === 1) ? pAmount : (phase === 3) ? -pAmount : 0;
-                                        pinPos.setValueAtTime(ct, [px + xOff, py]);
-                                    }
-                                } else if (pMotion === "wave") {
-                                    // 물결/바람 (사인파 연속)
-                                    var waveSteps = Math.floor(sceneDur * 10);
-                                    for (var ws = 0; ws <= waveSteps; ws++) {
-                                        var wt = currentTime + (ws * 0.1);
-                                        if (wt > currentTime + sceneDur) break;
-                                        var wOff = Math.sin(ws * 0.1 * pSpeed * Math.PI * 2) * pAmount;
-                                        pinPos.setValueAtTime(wt, [px + wOff, py]);
-                                    }
-                                } else if (pMotion === "breathe") {
-                                    // 호흡 (느린 상하)
-                                    for (var ci = 0; ci <= numCycles * 4; ci++) {
-                                        var ct = currentTime + (ci * cycleDur / 4);
-                                        if (ct > currentTime + sceneDur) break;
-                                        var phase = ci % 4;
-                                        var yOff = (phase === 1 || phase === 2) ? -pAmount : 0;
-                                        pinPos.setValueAtTime(ct, [px, py + yOff]);
-                                    }
-                                } else if (pMotion === "shake") {
-                                    // 빠른 떨림 (랜덤 느낌)
-                                    var shakeSteps = Math.floor(sceneDur * 8);
-                                    for (var ss = 0; ss <= shakeSteps; ss++) {
-                                        var st = currentTime + (ss * 0.125);
-                                        if (st > currentTime + sceneDur) break;
-                                        var sx = (ss % 2 === 0) ? pAmount : -pAmount;
-                                        var sy = (ss % 3 === 0) ? pAmount * 0.5 : -pAmount * 0.5;
-                                        pinPos.setValueAtTime(st, [px + sx, py + sy]);
-                                    }
-                                } else if (pMotion === "bob") {
-                                    // 위아래 반복 (바운스)
-                                    for (var ci = 0; ci <= numCycles * 2; ci++) {
-                                        var ct = currentTime + (ci * cycleDur / 2);
-                                        if (ct > currentTime + sceneDur) break;
-                                        var yOff = (ci % 2 === 0) ? 0 : -pAmount;
-                                        pinPos.setValueAtTime(ct, [px, py + yOff]);
-                                    }
-                                } else {
-                                    // 기본: 미세 호흡
-                                    pinPos.setValue([px, py]);
-                                }
-
-                                log.push("    핀: " + (pinDef.name || pi) + " (" + pMotion + ", " + pAmount + "px)");
+                            // bend, wave, swing → CC Bend It로 처리
+                            if (pMotion === "bend" || pMotion === "wave" || pMotion === "swing" || pMotion === "shake") {
+                                bendPins.push(pinDef);
                             }
-                        }
 
-                        // 고정 핀 추가
-                        if (layerDef.fixed_pins && layerDef.fixed_pins.length > 0) {
-                            for (var fi = 0; fi < layerDef.fixed_pins.length; fi++) {
-                                var fPinDef = layerDef.fixed_pins[fi];
-                                var fixedPin = deformGroup.addProperty("Puppet Pin");
-                                fixedPin.property("Position").setValue([
-                                    Number(fPinDef.x) || 0,
-                                    Number(fPinDef.y) || 0
-                                ]);
-                                log.push("    고정핀: " + (fPinDef.name || fi));
-                            }
+                            log.push("    핀: " + (pinDef.name || pi) + " (" + pMotion + ", " + pAmount + "px)");
                         }
-                    } catch (puppetEngineErr) {
-                        errorLog.push("씬 " + (si+1) + " puppet engine '" + (layerDef.name || layerDef.id) + "': " + puppetEngineErr.toString());
                     }
 
-                    // Wiggle Expression 적용
+                    // === 1. 호흡 애니메이션 (Scale 키프레임) ===
+                    if (hasBreath) {
+                        try {
+                            var bAmt = hasBreath.amount * 0.15; // px → scale% 변환 (미세하게)
+                            var bSpd = hasBreath.speed;
+                            var bCycleDur = 1.0 / bSpd;
+                            var bCycles = Math.ceil(sceneDur / bCycleDur);
+                            var scaleProp = aeLayer.property("Scale");
+
+                            for (var bc = 0; bc <= bCycles * 2; bc++) {
+                                var bt = currentTime + (bc * bCycleDur / 2);
+                                if (bt > currentTime + sceneDur) break;
+                                var sOff = (bc % 2 === 0) ? 0 : bAmt;
+                                scaleProp.setValueAtTime(bt, [pBaseScale + sOff, pBaseScale + sOff * 1.2]);
+                            }
+                            log.push("    호흡: scale ±" + bAmt.toFixed(1) + "%");
+                        } catch (breathErr) {
+                            errorLog.push("씬 " + (si+1) + " breathe: " + breathErr.toString());
+                        }
+                    }
+
+                    // === 2. 끄덕임/흔들림 (Rotation 키프레임) ===
+                    if (hasNod) {
+                        try {
+                            var nAmt = hasNod.amount * 0.3; // px → degree 변환
+                            var nSpd = hasNod.speed;
+                            var nCycleDur = 1.0 / nSpd;
+                            var nCycles = Math.ceil(sceneDur / nCycleDur);
+                            var rotProp = aeLayer.property("Rotation");
+
+                            for (var nc = 0; nc <= nCycles * 4; nc++) {
+                                var nt = currentTime + (nc * nCycleDur / 4);
+                                if (nt > currentTime + sceneDur) break;
+                                var nPhase = nc % 4;
+                                var rOff = (nPhase === 1) ? nAmt : (nPhase === 3) ? -nAmt : 0;
+                                rotProp.setValueAtTime(nt, rOff);
+                            }
+                            log.push("    끄덕임: rotation ±" + nAmt.toFixed(1) + "°");
+                        } catch (nodErr) {
+                            errorLog.push("씬 " + (si+1) + " nod: " + nodErr.toString());
+                        }
+                    }
+
+                    // === 3. 좌우 흔들림 (Position X 키프레임) ===
+                    if (hasSway) {
+                        try {
+                            var swAmt = hasSway.amount;
+                            var swSpd = hasSway.speed;
+                            var swCycleDur = 1.0 / swSpd;
+                            var swCycles = Math.ceil(sceneDur / swCycleDur);
+                            var posProp = aeLayer.property("Position");
+                            var basePos = posProp.value;
+
+                            for (var sc2 = 0; sc2 <= swCycles * 4; sc2++) {
+                                var st2 = currentTime + (sc2 * swCycleDur / 4);
+                                if (st2 > currentTime + sceneDur) break;
+                                var sPhase = sc2 % 4;
+                                var xOff = (sPhase === 1) ? swAmt : (sPhase === 3) ? -swAmt : 0;
+                                posProp.setValueAtTime(st2, [basePos[0] + xOff, basePos[1]]);
+                            }
+                            log.push("    흔들림: position ±" + swAmt + "px");
+                        } catch (swayErr) {
+                            errorLog.push("씬 " + (si+1) + " sway: " + swayErr.toString());
+                        }
+                    }
+
+                    // === 4. CC Bend It 효과 (핀 위치 기반 구부림) ===
+                    for (var bi = 0; bi < bendPins.length && bi < 3; bi++) {
+                        try {
+                            var bPin = bendPins[bi];
+                            var bendEffect = aeLayer.property("Effects").addProperty("CC Bend It");
+                            bendEffect.name = "Bend_" + (bPin.name || bi);
+
+                            var bx = Number(bPin.x) || (comp.width / 2);
+                            var by = Number(bPin.y) || (comp.height / 2);
+                            var bAmt2 = Number(bPin.amount) || 10;
+                            var bSpd2 = Number(bPin.speed) || 0.8;
+
+                            // 핀 위치를 컴포지션 좌표로 변환 (이미지가 contain 스케일된 상태)
+                            var scaleFactor = pBaseScale / 100;
+                            var imgOffX = (comp.width - pSrcW * scaleFactor) / 2;
+                            var imgOffY = (comp.height - pSrcH * scaleFactor) / 2;
+                            var compX = imgOffX + bx * scaleFactor;
+                            var compY = imgOffY + by * scaleFactor;
+
+                            bendEffect.property("Start").setValue([compX, Math.max(0, compY - 80 * scaleFactor)]);
+                            bendEffect.property("End").setValue([compX, Math.min(comp.height, compY + 80 * scaleFactor)]);
+
+                            // 구부림 키프레임 애니메이션
+                            var bendProp = bendEffect.property("Bend");
+                            var bCycleDur2 = 1.0 / bSpd2;
+                            var bCycles2 = Math.ceil(sceneDur / bCycleDur2);
+                            for (var bci = 0; bci <= bCycles2 * 4; bci++) {
+                                var bct = currentTime + (bci * bCycleDur2 / 4);
+                                if (bct > currentTime + sceneDur) break;
+                                var bPhase = bci % 4;
+                                var bVal = (bPhase === 1) ? bAmt2 : (bPhase === 3) ? -bAmt2 : 0;
+                                bendProp.setValueAtTime(bct, bVal);
+                            }
+                            log.push("    벤드: " + (bPin.name || bi) + " (" + bAmt2 + "°, " + bPin.motion + ")");
+                        } catch (bendErr) {
+                            errorLog.push("씬 " + (si+1) + " CC Bend: " + bendErr.toString());
+                        }
+                    }
+
+                    // === 5. Wiggle Expression (자연스러운 미세 떨림) ===
                     if (layerDef.wiggle_elements && layerDef.wiggle_elements.length > 0) {
                         for (var wi = 0; wi < layerDef.wiggle_elements.length; wi++) {
                             var wig = layerDef.wiggle_elements[wi];
@@ -1360,42 +1386,16 @@ function processV2(comp, data, projectFolder) {
                                 errorLog.push("씬 " + (si+1) + " wiggle: " + wigErr.toString());
                             }
                         }
+                    } else {
+                        // 기본 미세 위글 (항상 적용)
+                        try {
+                            aeLayer.property("Rotation").expression = "wiggle(1.5, 0.5)";
+                            aeLayer.property("Position").expression = "wiggle(1, 2)";
+                            log.push("    기본 위글 적용");
+                        } catch (defWigErr) {}
                     }
 
-                    // CC Bend It 적용 (bend 모션용)
-                    if (layerDef.pins) {
-                        for (var bi = 0; bi < layerDef.pins.length; bi++) {
-                            if (layerDef.pins[bi].motion === "bend") {
-                                try {
-                                    var bendEffect = aeLayer.property("Effects").addProperty("CC Bend It");
-                                    var bPin = layerDef.pins[bi];
-                                    var bx = Number(bPin.x) || 0;
-                                    var by = Number(bPin.y) || 0;
-                                    var bAmt = Number(bPin.amount) || 10;
-                                    var bSpd = Number(bPin.speed) || 0.8;
-
-                                    bendEffect.property("Start").setValue([bx, by - 50]);
-                                    bendEffect.property("End").setValue([bx, by + 50]);
-
-                                    var bendProp = bendEffect.property("Bend");
-                                    var bCycleDur = 1.0 / bSpd;
-                                    var bCycles = Math.ceil(sceneDur / bCycleDur);
-                                    for (var bci = 0; bci <= bCycles * 4; bci++) {
-                                        var bct = currentTime + (bci * bCycleDur / 4);
-                                        if (bct > currentTime + sceneDur) break;
-                                        var bPhase = bci % 4;
-                                        var bVal = (bPhase === 1) ? bAmt : (bPhase === 3) ? -bAmt : 0;
-                                        bendProp.setValueAtTime(bct, bVal);
-                                    }
-                                    log.push("    벤드: " + (bPin.name || bi) + " (" + bAmt + "deg)");
-                                } catch (bendErr) {
-                                    errorLog.push("씬 " + (si+1) + " CC Bend: " + bendErr.toString());
-                                }
-                            }
-                        }
-                    }
-
-                    log.push("  → 퍼펫 성공!");
+                    log.push("  → 캐릭터 애니메이션 성공!");
                     if (!firstImgLayer) firstImgLayer = aeLayer;
                 }
               } catch (puppetErr) {
