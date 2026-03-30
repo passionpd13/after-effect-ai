@@ -58,24 +58,20 @@ export default function AnimatePage() {
     } catch {}
   }, [geminiKey, geminiModel]);
 
-  // MIME 타입으로 실제 확장자 결정
-  const mimeToExt = useCallback((mimeType: string): string => {
-    const map: Record<string, string> = {
-      "image/png": ".png",
-      "image/jpeg": ".jpg",
-      "image/jpg": ".jpg",
-      "image/webp": ".webp",
-      "image/gif": ".gif",
-      "image/bmp": ".bmp",
-      "image/tiff": ".tiff",
-    };
-    return map[mimeType] || ".png";
+  // 파일 바이트에서 실제 이미지 포맷 감지 (magic number 기반)
+  const detectRealFormat = useCallback((arrayBuffer: ArrayBuffer): string => {
+    const bytes = new Uint8Array(arrayBuffer.slice(0, 4));
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) return ".png";
+    if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) return ".jpg";
+    if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return ".gif";
+    if (bytes[0] === 0x42 && bytes[1] === 0x4D) return ".bmp";
+    if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) return ".webp";
+    return ".png"; // 감지 실패 시 기본값
   }, []);
 
-  // 파일명 정리 (실제 MIME 타입 기반 확장자 사용)
-  const sanitizeFileName = useCallback((name: string, index: number, actualMime: string): string => {
+  // 파일명 정리 (실제 파일 바이트 기반 확장자 사용)
+  const sanitizeFileName = useCallback((name: string, index: number, realExt: string): string => {
     const lastDot = name.lastIndexOf(".");
-    const ext = mimeToExt(actualMime);
     const base = lastDot >= 0 ? name.slice(0, lastDot) : name;
     const cleaned = base
       .replace(/[가-힣ㄱ-ㅎㅏ-ㅣ]/g, "")
@@ -83,8 +79,8 @@ export default function AnimatePage() {
       .replace(/[^a-zA-Z0-9_\-]/g, "")
       .replace(/_+/g, "_")
       .replace(/^_|_$/g, "");
-    return (cleaned || `character_${index + 1}`) + ext;
-  }, [mimeToExt]);
+    return (cleaned || `character_${index + 1}`) + realExt;
+  }, []);
 
   const handleImageUpload = useCallback((files: FileList | null) => {
     if (!files) return;
@@ -95,20 +91,27 @@ export default function AnimatePage() {
       const safeIndex = images.length + i;
       newImages.push(
         new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            resolve({
-              file,
-              dataUrl: e.target?.result as string,
-              name: sanitizeFileName(file.name, safeIndex, file.type),
-            });
+          // ★ 파일 바이트를 직접 읽어서 실제 포맷 감지 (browser MIME 무시)
+          const bufReader = new FileReader();
+          bufReader.onload = (bufEvent) => {
+            const realExt = detectRealFormat(bufEvent.target?.result as ArrayBuffer);
+            const safeName = sanitizeFileName(file.name, safeIndex, realExt);
+            const urlReader = new FileReader();
+            urlReader.onload = (urlEvent) => {
+              resolve({
+                file,
+                dataUrl: urlEvent.target?.result as string,
+                name: safeName,
+              });
+            };
+            urlReader.readAsDataURL(file);
           };
-          reader.readAsDataURL(file);
+          bufReader.readAsArrayBuffer(file.slice(0, 8)); // 처음 8바이트만 읽기
         })
       );
     }
     Promise.all(newImages).then((imgs) => setImages((prev) => [...prev, ...imgs]));
-  }, [images.length, sanitizeFileName]);
+  }, [images.length, sanitizeFileName, detectRealFormat]);
 
   const removeImage = (index: number) => {
     setImages((prev) => prev.filter((_, i) => i !== index));

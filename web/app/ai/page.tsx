@@ -189,38 +189,30 @@ export default function AiModePage() {
   // 배경 제거 진행률
   const [bgRemoveProgress, setBgRemoveProgress] = useState({ done: 0, total: 0 });
 
-  // MIME 타입으로 실제 확장자 결정 (파일 내용과 확장자 불일치 방지)
-  const mimeToExt = useCallback((mimeType: string): string => {
-    const map: Record<string, string> = {
-      "image/png": ".png",
-      "image/jpeg": ".jpg",
-      "image/jpg": ".jpg",
-      "image/webp": ".webp",
-      "image/gif": ".gif",
-      "image/bmp": ".bmp",
-      "image/tiff": ".tiff",
-    };
-    return map[mimeType] || ".png";
+  // 파일 바이트에서 실제 이미지 포맷 감지 (magic number 기반, browser MIME 무시)
+  const detectRealFormat = useCallback((arrayBuffer: ArrayBuffer): string => {
+    const bytes = new Uint8Array(arrayBuffer.slice(0, 4));
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) return ".png";
+    if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) return ".jpg";
+    if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return ".gif";
+    if (bytes[0] === 0x42 && bytes[1] === 0x4D) return ".bmp";
+    if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) return ".webp";
+    return ".png";
   }, []);
 
-  // 파일명을 AE 호환 영문으로 자동 변환 (실제 MIME 기반 확장자)
-  const sanitizeFileName = useCallback((name: string, index: number, actualMime: string): string => {
+  // 파일명을 AE 호환 영문으로 자동 변환 (파일 바이트 기반 확장자)
+  const sanitizeFileName = useCallback((name: string, index: number, realExt: string): string => {
     const lastDot = name.lastIndexOf(".");
-    const ext = mimeToExt(actualMime);
     const base = lastDot >= 0 ? name.slice(0, lastDot) : name;
-
-    // 영문/숫자/밑줄만 남기기
     const cleaned = base
-      .replace(/[가-힣ㄱ-ㅎㅏ-ㅣ]/g, "") // 한글 제거
-      .replace(/\s+/g, "_")              // 공백 → 밑줄
-      .replace(/[^a-zA-Z0-9_\-]/g, "")   // 특수문자 제거
-      .replace(/_+/g, "_")               // 연속 밑줄 정리
-      .replace(/^_|_$/g, "");             // 앞뒤 밑줄 제거
-
-    // 영문이 아무것도 안 남으면 image_N으로 대체
+      .replace(/[가-힣ㄱ-ㅎㅏ-ㅣ]/g, "")
+      .replace(/\s+/g, "_")
+      .replace(/[^a-zA-Z0-9_\-]/g, "")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "");
     const safeName = cleaned || `image_${index + 1}`;
-    return safeName + ext;
-  }, [mimeToExt]);
+    return safeName + realExt;
+  }, []);
 
   const handleImageUpload = useCallback((files: FileList | null) => {
     if (!files) return;
@@ -231,22 +223,28 @@ export default function AiModePage() {
       const safeIndex = images.length + i;
       newImages.push(
         new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const safeName = sanitizeFileName(file.name, safeIndex, file.type);
-            resolve({
-              file,
-              dataUrl: e.target?.result as string,
-              name: safeName,  // AE 호환 영문 파일명 (실제 MIME 기반 확장자)
-              imageType: "source",
-            });
+          // ★ 파일 바이트를 직접 읽어서 실제 포맷 감지 (browser MIME 무시)
+          const bufReader = new FileReader();
+          bufReader.onload = (bufEvent) => {
+            const realExt = detectRealFormat(bufEvent.target?.result as ArrayBuffer);
+            const safeName = sanitizeFileName(file.name, safeIndex, realExt);
+            const urlReader = new FileReader();
+            urlReader.onload = (urlEvent) => {
+              resolve({
+                file,
+                dataUrl: urlEvent.target?.result as string,
+                name: safeName,
+                imageType: "source",
+              });
+            };
+            urlReader.readAsDataURL(file);
           };
-          reader.readAsDataURL(file);
+          bufReader.readAsArrayBuffer(file.slice(0, 8));
         })
       );
     }
     Promise.all(newImages).then((imgs) => setImages((prev) => [...prev, ...imgs]));
-  }, [images.length, sanitizeFileName]);
+  }, [images.length, sanitizeFileName, detectRealFormat]);
 
   const removeImage = (index: number) => {
     setImages((prev) => prev.filter((_, i) => i !== index));
