@@ -17,57 +17,91 @@
 // [0] 유틸리티 함수
 // ============================================================
 
-// 파일 헤더를 읽어서 실제 이미지 포맷 감지 (확장자와 내용 불일치 수정)
+// 파일 헤더를 읽어서 실제 이미지 포맷 감지 → 확장자 불일치 시 원본을 RENAME
 function detectAndFixImageFile(filePath) {
     var f = new File(filePath);
     if (!f.exists) return f;
 
-    // 바이너리 모드로 처음 4바이트 읽기
     f.open("r");
     f.encoding = "BINARY";
     var header = f.read(4);
     f.close();
 
-    // 실제 포맷 감지
     var actualExt = "";
     if (header.length >= 4) {
-        var b0 = header.charCodeAt(0);
-        var b1 = header.charCodeAt(1);
-        var b2 = header.charCodeAt(2);
-        var b3 = header.charCodeAt(3);
-
-        if (b0 === 0x89 && b1 === 0x50 && b2 === 0x4E && b3 === 0x47) {
-            actualExt = ".png";  // PNG: 89 50 4E 47
-        } else if (b0 === 0xFF && b1 === 0xD8 && b2 === 0xFF) {
-            actualExt = ".jpg";  // JPEG: FF D8 FF
-        } else if (b0 === 0x47 && b1 === 0x49 && b2 === 0x46) {
-            actualExt = ".gif";  // GIF: 47 49 46
-        } else if (b0 === 0x42 && b1 === 0x4D) {
-            actualExt = ".bmp";  // BMP: 42 4D
-        } else if (b0 === 0x52 && b1 === 0x49 && b2 === 0x46 && b3 === 0x46) {
-            actualExt = ".webp"; // WEBP: 52 49 46 46 (RIFF)
-        } else if ((b0 === 0x49 && b1 === 0x49) || (b0 === 0x4D && b1 === 0x4D)) {
-            actualExt = ".tiff"; // TIFF: 49 49 or 4D 4D
-        }
+        var b0 = header.charCodeAt(0), b1 = header.charCodeAt(1);
+        var b2 = header.charCodeAt(2), b3 = header.charCodeAt(3);
+        if (b0 === 0x89 && b1 === 0x50 && b2 === 0x4E && b3 === 0x47) actualExt = ".png";
+        else if (b0 === 0xFF && b1 === 0xD8 && b2 === 0xFF) actualExt = ".jpg";
+        else if (b0 === 0x47 && b1 === 0x49 && b2 === 0x46) actualExt = ".gif";
+        else if (b0 === 0x42 && b1 === 0x4D) actualExt = ".bmp";
+        else if (b0 === 0x52 && b1 === 0x49 && b2 === 0x46 && b3 === 0x46) actualExt = ".webp";
     }
+    if (!actualExt) return f;
 
-    if (!actualExt) return f; // 감지 실패시 원본 사용
-
-    // 현재 확장자와 비교
     var currentName = f.name;
     var dotIdx = currentName.lastIndexOf(".");
     var currentExt = dotIdx >= 0 ? currentName.slice(dotIdx).toLowerCase() : "";
+    if (currentExt === actualExt || (currentExt === ".jpeg" && actualExt === ".jpg")) return f;
 
-    // 확장자 일치하면 그대로 반환
-    if (currentExt === actualExt) return f;
-    if (currentExt === ".jpeg" && actualExt === ".jpg") return f;
-    if (currentExt === ".jpg" && actualExt === ".jpg") return f;
-
-    // 불일치! 올바른 확장자로 복사본 생성
+    // 확장자 불일치! 원본 파일을 올바른 확장자로 복사 (원본 유지 + 올바른 파일 생성)
     var newName = dotIdx >= 0 ? currentName.slice(0, dotIdx) + actualExt : currentName + actualExt;
     var newPath = new File(f.parent.fsName + "/" + newName);
-    f.copy(newPath);
+    if (!newPath.exists) {
+        f.copy(newPath);
+    }
     return newPath;
+}
+
+// ★ 이미지를 안전하게 임포트 (항상 포맷 감지 먼저 → PNGIO 에러 방지)
+function safeImportImage(filePath) {
+    // AE의 PNGIO 에러는 try-catch로 잡을 수 없음 (모달 다이얼로그가 먼저 뜸)
+    // 따라서 항상 먼저 포맷을 확인하고 확장자를 맞춘 후 임포트
+    var fixed = detectAndFixImageFile(filePath);
+    var opts = new ImportOptions(fixed);
+    return app.project.importFile(opts);
+}
+
+// 프로젝트 폴더에서 이미지 파일 찾기 (파일명 불일치 대응)
+function findImageFile(projectFolder, fileName) {
+    // 1. 정확한 파일명으로 시도
+    var exactPath = new File(projectFolder + "/" + fileName);
+    if (exactPath.exists) return detectAndFixImageFile(exactPath.fsName);
+
+    // 2. 하위 폴더 포함 검색 (ZIP 해제 시 폴더가 중첩될 수 있음)
+    var folder = new Folder(projectFolder);
+    var allFiles = folder.getFiles();
+    for (var i = 0; i < allFiles.length; i++) {
+        if (allFiles[i] instanceof Folder) {
+            // 하위 폴더 안에서 찾기
+            var subPath = new File(allFiles[i].fsName + "/" + fileName);
+            if (subPath.exists) return subPath;
+        }
+    }
+
+    // 3. 확장자만 다른 파일 찾기 (character_1.png → character_1.jpg 등)
+    var dotIdx = fileName.lastIndexOf(".");
+    var baseName = dotIdx >= 0 ? fileName.slice(0, dotIdx) : fileName;
+    var extensions = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"];
+    for (var ei = 0; ei < extensions.length; ei++) {
+        var altPath = new File(projectFolder + "/" + baseName + extensions[ei]);
+        if (altPath.exists) return altPath;
+    }
+
+    // 4. 파일명에 숫자 인덱스가 있으면 패턴 매칭 (character_1 → image_1 등)
+    var numMatch = baseName.match(/(\d+)/);
+    if (numMatch) {
+        var num = numMatch[1];
+        var allInFolder = folder.getFiles("*" + num + ".*");
+        for (var fi = 0; fi < allInFolder.length; fi++) {
+            if (allInFolder[fi] instanceof File && allInFolder[fi].name.match(/\.(png|jpg|jpeg|webp|gif|bmp|tiff)$/i)) {
+                return allInFolder[fi];
+            }
+        }
+    }
+
+    // 5. 못 찾으면 null 반환
+    return null;
 }
 // 색상값을 안전한 [R,G,B] 배열로 변환 (0~1 범위)
 // [R,G,B,A] 4개 값이면 A는 무시하고 3개만 사용
@@ -193,10 +227,8 @@ function importAndPlaceImage(comp, scene, startTime, projectFolder) {
         return null;
     }
     
-    // 이미지 임포트 (확장자/내용 불일치 자동 수정)
-    imagePath = detectAndFixImageFile(imagePath);
-    var importOptions = new ImportOptions(imagePath);
-    var footage = app.project.importFile(importOptions);
+    // 이미지 임포트 (PNGIO 오류 시 확장자 수정 후 재시도)
+    var footage = safeImportImage(imagePath.fsName);
     
     // 컴프에 추가
     var layer = comp.layers.add(footage);
@@ -1204,16 +1236,16 @@ function processV2(comp, data, projectFolder) {
             // --- 이미지 레이어 ---
             if (layerDef.type === "image" && layerDef.image_source && layerDef.image_source.file) {
                 var imgFileName = layerDef.image_source.file;
-                var imgPath = new File(projectFolder + "/" + imgFileName);
-                log.push("  이미지: " + imgFileName + " → " + imgPath.fsName);
+                var imgPath = findImageFile(projectFolder, imgFileName);
+                log.push("  이미지: " + imgFileName);
 
-                if (!imgPath.exists) {
-                    errorLog.push("씬 " + (si+1) + " '" + (layerDef.name || layerDef.id) + "': 파일 없음 → " + imgPath.fsName);
+                if (!imgPath) {
+                    errorLog.push("씬 " + (si+1) + " '" + (layerDef.name || layerDef.id) + "': 파일 없음 → " + imgFileName);
+                    alert("⚠️ 이미지 파일 없음: " + imgFileName + "\n폴더: " + projectFolder);
                 } else {
                     try {
-                        imgPath = detectAndFixImageFile(imgPath);
-                        var importOpts = new ImportOptions(imgPath);
-                        var footage = app.project.importFile(importOpts);
+                        log.push("    파일 찾음: " + imgPath.fsName);
+                        var footage = safeImportImage(imgPath.fsName);
                         aeLayer = comp.layers.add(footage);
                         aeLayer.name = layerDef.name || layerDef.id || ("Layer_" + si + "_" + li);
 
@@ -1383,20 +1415,69 @@ function processV2(comp, data, projectFolder) {
             if (layerDef.type === "puppet" && layerDef.image_source && layerDef.image_source.file) {
               try {
                 var puppetFileName = layerDef.image_source.file;
-                var puppetPath = new File(projectFolder + "/" + puppetFileName);
                 log.push("  캐릭터 리깅: " + puppetFileName);
 
-                if (!puppetPath.exists) {
-                    errorLog.push("씬 " + (si+1) + " puppet '" + (layerDef.name || layerDef.id) + "': 파일 없음 → " + puppetPath.fsName);
+                // ★ 강화된 파일 찾기 (확장자 불일치, 하위 폴더 등 대응)
+                var puppetPath = findImageFile(projectFolder, puppetFileName);
+
+                if (!puppetPath) {
+                    var errMsg = "씬 " + (si+1) + ": 이미지 파일을 찾을 수 없습니다!\n" +
+                        "파일명: " + puppetFileName + "\n" +
+                        "검색 폴더: " + projectFolder + "\n\n" +
+                        "해결 방법:\n" +
+                        "1. ZIP 파일을 압축 해제한 폴더에서 JSON을 선택하세요\n" +
+                        "2. 이미지 파일이 JSON과 같은 폴더에 있는지 확인하세요";
+                    errorLog.push(errMsg);
+                    // ★ 즉시 alert로 사용자에게 알림!
+                    alert("⚠️ 이미지 파일 없음!\n\n" + errMsg);
                 } else {
-                    puppetPath = detectAndFixImageFile(puppetPath);
-                    var puppetImport = new ImportOptions(puppetPath);
-                    var puppetFootage = app.project.importFile(puppetImport);
-                    aeLayer = comp.layers.add(puppetFootage);
-                    aeLayer.name = layerDef.name || layerDef.id || ("Rig_" + si + "_" + li);
-                    aeLayer.startTime = currentTime;
-                    aeLayer.inPoint = currentTime;
-                    aeLayer.outPoint = currentTime + sceneDur;
+                    log.push("    파일 찾음: " + puppetPath.fsName);
+                    var puppetFootage = safeImportImage(puppetPath.fsName);
+
+                    // ★★★ 2레이어 시스템: 배경(원본, 고정) + 캐릭터(컷아웃, CC Bend It) ★★★
+                    var cutoutFile = layerDef.image_source.cutout_file;
+                    var cutoutPath = cutoutFile ? findImageFile(projectFolder, cutoutFile) : null;
+
+                    if (cutoutPath) {
+                        // 2레이어 모드: 컷아웃이 있으면 사용
+                        var cutoutFootage = safeImportImage(cutoutPath.fsName);
+
+                        // 하위: 원본 이미지 (배경, 고정)
+                        var bgLayer = comp.layers.add(puppetFootage);
+                        bgLayer.name = (layerDef.name || "BG") + "_bg";
+                        bgLayer.startTime = currentTime;
+                        bgLayer.inPoint = currentTime;
+                        bgLayer.outPoint = currentTime + sceneDur;
+
+                        // 상위: 컷아웃 이미지 (캐릭터, CC Bend It 적용)
+                        aeLayer = comp.layers.add(cutoutFootage);
+                        aeLayer.name = layerDef.name || layerDef.id || ("Rig_" + si + "_" + li);
+                        aeLayer.startTime = currentTime;
+                        aeLayer.inPoint = currentTime;
+                        aeLayer.outPoint = currentTime + sceneDur;
+
+                        // 배경 레이어도 동일한 스케일/위치 적용
+                        var bgFitMode = layerDef.image_source.fit_mode || "cover";
+                        var bgSrcW = puppetFootage.width, bgSrcH = puppetFootage.height;
+                        var bgScale = 100;
+                        if (bgSrcW > 0 && bgSrcH > 0) {
+                            bgScale = (bgFitMode === "cover")
+                                ? Math.max(comp.width / bgSrcW, comp.height / bgSrcH) * 100
+                                : Math.min(comp.width / bgSrcW, comp.height / bgSrcH) * 100;
+                        }
+                        bgLayer.property("Position").setValue([comp.width / 2, comp.height / 2]);
+                        bgLayer.property("Scale").setValue([bgScale, bgScale]);
+                        bgLayer.property("Opacity").setValue(100);
+                        log.push("    2레이어 모드: 배경(고정) + 컷아웃(CC Bend It)");
+                    } else {
+                        // 1레이어 모드: 원본 이미지에 직접 CC Bend It
+                        aeLayer = comp.layers.add(puppetFootage);
+                        aeLayer.name = layerDef.name || layerDef.id || ("Rig_" + si + "_" + li);
+                        aeLayer.startTime = currentTime;
+                        aeLayer.inPoint = currentTime;
+                        aeLayer.outPoint = currentTime + sceneDur;
+                        log.push("    1레이어 모드: 원본에 직접 CC Bend It");
+                    }
 
                     // fit_mode: 기본값 "cover"로 화면 꽉 채움
                     var pFitMode = layerDef.image_source.fit_mode || "cover";
@@ -1431,64 +1512,54 @@ function processV2(comp, data, projectFolder) {
 
                     var joints = layerDef.joints || layerDef.pins || [];
                     var bendIdx = 0;
-                    var maxBends = 6; // CC Bend It 최대 개수
+                    var maxBends = 6;
 
                     for (var ji = 0; ji < joints.length && bendIdx < maxBends; ji++) {
                         try {
                             var jDef = joints[ji];
                             var jMotion = jDef.motion || "breathe";
-                            var jAmount = Math.min(Number(jDef.amount) || 3, 8); // 최대 8도로 제한
-                            var jSpeed = Math.min(Number(jDef.speed) || 0.4, 1.0); // 최대 속도 1.0
+                            var jAmount = Math.min(Number(jDef.amount) || 5, 30); // ★ 최대 30도 (CC Bend It은 도 단위, 8도는 안 보임)
+                            var jSpeed = Math.min(Number(jDef.speed) || 0.5, 2.0); // ★ 최대 속도 2.0
                             var jPhase = (Number(jDef.phase) || 0) * Math.PI / 180;
                             var jPart = jDef.part || jDef.name || "body";
                             var jx = Number(jDef.x) || (comp.width / 2);
                             var jy = Number(jDef.y) || (comp.height / 2);
 
-                            // CC Bend It 이펙트 생성
                             var bendEff = aeLayer.property("Effects").addProperty("CC Bend It");
                             bendEff.name = "J_" + (jDef.name || jPart || bendIdx);
 
-                            // 파트별 벤드 방향/길이 자동 결정
-                            var bendLen = 50 * scaleFactor;
+                            var bendLen = 80 * scaleFactor; // ★ 50→80 벤드 영역 확대
                             var isHead = (jPart.indexOf("head") >= 0);
                             var isArm = (jPart.indexOf("arm") >= 0 || jPart.indexOf("hand") >= 0);
                             var isTail = (jPart.indexOf("tail") >= 0 || jPart.indexOf("cape") >= 0 || jPart.indexOf("hair") >= 0);
-                            var isTorso = (jPart.indexOf("torso") >= 0 || jPart.indexOf("body") >= 0);
                             var isLeg = (jPart.indexOf("leg") >= 0);
 
-                            // Start/End 포인트 설정 (벤드 축 방향)
                             if (isArm || isLeg) {
-                                // 팔/다리: 수평 축 벤드
                                 bendEff.property("Start").setValue([jx - bendLen, jy]);
                                 bendEff.property("End").setValue([jx + bendLen, jy]);
                             } else if (isTail) {
-                                // 꼬리/머리카락: 긴 수직 벤드
                                 bendEff.property("Start").setValue([jx, Math.max(0, jy - bendLen * 1.5)]);
                                 bendEff.property("End").setValue([jx, Math.min(comp.height, jy + bendLen * 1.5)]);
                             } else if (isHead) {
-                                // 머리: 짧은 수직 벤드
-                                bendEff.property("Start").setValue([jx, Math.max(0, jy - bendLen * 0.8)]);
-                                bendEff.property("End").setValue([jx, Math.min(comp.height, jy + bendLen * 0.8)]);
+                                bendEff.property("Start").setValue([jx, Math.max(0, jy - bendLen)]);
+                                bendEff.property("End").setValue([jx, jy + bendLen * 0.3]);
                             } else {
-                                // 몸통/기타: 수직 벤드
                                 bendEff.property("Start").setValue([jx, Math.max(0, jy - bendLen)]);
                                 bendEff.property("End").setValue([jx, Math.min(comp.height, jy + bendLen)]);
                             }
 
-                            // 모션별 벤드 진폭 조정
+                            // ★ 모션별 벤드 진폭 - 배율 제거, amount 그대로 사용
                             var bendAmt = jAmount;
-                            if (jMotion === "breathe") bendAmt = jAmount * 0.5; // 호흡은 매우 미세
-                            else if (jMotion === "nod") bendAmt = jAmount * 0.7; // 끄덕임도 미세
-                            else if (jMotion === "shake") bendAmt = jAmount * 0.4; // 떨림은 빠르지만 작게
+                            if (jMotion === "breathe") bendAmt = Math.max(jAmount, 5); // 최소 5도
+                            else if (jMotion === "nod") bendAmt = Math.max(jAmount, 8); // 최소 8도
+                            else if (jMotion === "swing" || jMotion === "wave") bendAmt = Math.max(jAmount, 10); // 최소 10도
+                            else if (jMotion === "shake") bendAmt = Math.max(jAmount, 5);
 
-                            // 모션별 Expression
                             if (jMotion === "shake") {
-                                // 떨림: 불규칙한 wiggle
-                                var skFreq = Math.min(jSpeed * 5, 6);
+                                var skFreq = Math.max(jSpeed * 5, 3);
                                 bendEff.property("Bend").expression =
                                     "wiggle(" + skFreq + ", " + bendAmt + ")";
                             } else {
-                                // 기본: 부드러운 사인파
                                 bendEff.property("Bend").expression =
                                     "var amt = " + bendAmt + ";\n" +
                                     "var spd = " + jSpeed + ";\n" +
@@ -1525,15 +1596,24 @@ function processV2(comp, data, projectFolder) {
                         }
                     }
 
-                    // 관절이 전혀 없으면 기본 미세 호흡 벤드 1개 추가
+                    // 관절이 전혀 없으면 기본 벤드 3개 추가 (머리/몸통/팔)
                     if (bendIdx === 0) {
                         try {
-                            var defBend = aeLayer.property("Effects").addProperty("CC Bend It");
-                            defBend.name = "Default_Breathe";
-                            defBend.property("Start").setValue([comp.width / 2, comp.height * 0.3]);
-                            defBend.property("End").setValue([comp.width / 2, comp.height * 0.7]);
-                            defBend.property("Bend").expression = "Math.sin(time * 0.3 * Math.PI * 2) * 1.5";
-                            log.push("    기본 호흡 벤드 적용 (관절 미지정)");
+                            // 머리 끄덕임
+                            var defHead = aeLayer.property("Effects").addProperty("CC Bend It");
+                            defHead.name = "Default_Head";
+                            defHead.property("Start").setValue([comp.width / 2, comp.height * 0.1]);
+                            defHead.property("End").setValue([comp.width / 2, comp.height * 0.35]);
+                            defHead.property("Bend").expression = "Math.sin(time * 0.5 * Math.PI * 2) * 8";
+
+                            // 몸통 호흡
+                            var defBody = aeLayer.property("Effects").addProperty("CC Bend It");
+                            defBody.name = "Default_Body";
+                            defBody.property("Start").setValue([comp.width / 2, comp.height * 0.3]);
+                            defBody.property("End").setValue([comp.width / 2, comp.height * 0.7]);
+                            defBody.property("Bend").expression = "Math.sin(time * 0.3 * Math.PI * 2) * 5";
+
+                            log.push("    기본 벤드 적용 (관절 미지정): 머리+몸통");
                         } catch (defErr) {}
                     }
 
@@ -1655,8 +1735,10 @@ function processV2(comp, data, projectFolder) {
                 }
             }
 
-            // --- 지속 애니메이션 ---
-            if (aeLayer && layerDef.animation && layerDef.animation.type !== "none") {
+            // --- 지속 애니메이션 (puppet은 CC Bend It만 사용 → 스킵) ---
+            if (aeLayer && layerDef.type === "puppet") {
+                // puppet 레이어는 Transform 애니메이션 금지 (이미지 전체 흔들림 방지)
+            } else if (aeLayer && layerDef.animation && layerDef.animation.type !== "none") {
                 var anim = layerDef.animation;
                 var animType = anim.type;
                 var intensity = anim.intensity || "normal";
@@ -1723,8 +1805,10 @@ function processV2(comp, data, projectFolder) {
                 }
             }
 
-            // --- Exit 애니메이션 ---
-            if (aeLayer && layerDef.exit && layerDef.exit.type !== "none") {
+            // --- Exit 애니메이션 (puppet은 항상 표시 → 스킵) ---
+            if (aeLayer && layerDef.type === "puppet") {
+                // puppet 레이어는 exit 금지 (opacity 0/scale 0 방지)
+            } else if (aeLayer && layerDef.exit && layerDef.exit.type !== "none") {
                 var ex = layerDef.exit;
                 var exitDur = ex.duration || 0.5;
                 var exitBefore = ex.time_before_end || 0.5;
