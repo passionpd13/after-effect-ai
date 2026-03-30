@@ -164,7 +164,7 @@ format: "vertical" | "horizontal" | "square"
           "three_d": true,
           "transform": {
             "position": {"x": 540, "y": 960},
-            "scale": [120, 120],
+            "scale": [100, 100],
             "opacity": 100,
             "z_position": -2000
           },
@@ -179,8 +179,8 @@ format: "vertical" | "horizontal" | "square"
             "easing": "ease_out"
           },
           "animation": {
-            "type": "ken_burns",
-            "intensity": "subtle",
+            "type": "none",
+            "intensity": "normal",
             "loop": false
           }
         }
@@ -211,6 +211,8 @@ format: "vertical" | "horizontal" | "square"
 - 배경 이미지는 z_position: -2000 (가장 뒤)
 - 배경 이미지에 effects(blur, vignette 등) 절대 금지
 - 배경 이미지 opacity: 100
+- 배경 이미지 animation.type: "none" (확대/축소/이동 등 애니메이션 금지)
+- 배경 이미지 scale: [100, 100] (원본 크기 유지, 확대/축소 금지)
 
 === 텍스트 가독성 규칙 (필수!) ===
 - font_weight는 반드시 "bold" 또는 "black" (regular 절대 금지)
