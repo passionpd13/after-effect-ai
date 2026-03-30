@@ -13,6 +13,7 @@ export default function AnimatePage() {
   const [generatedJson, setGeneratedJson] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
 
   // API Keys
   const [geminiKey, setGeminiKey] = useState("");
@@ -249,9 +250,25 @@ export default function AnimatePage() {
               <p className="text-[11px] text-white/40 mb-3">
                 일러스트, 만화, 캐릭터 이미지를 올려주세요. AI가 분석하여 움직일 부위를 자동으로 찾습니다.
               </p>
-              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-green-500/30 rounded-xl cursor-pointer hover:border-green-500/60 hover:bg-green-500/[0.02] transition-all">
-                <div className="text-3xl mb-1 opacity-60">🦴</div>
-                <span className="text-xs text-white/40">캐릭터 이미지 선택 (여러 장 가능)</span>
+              <label
+                className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-xl cursor-pointer transition-all ${
+                  isDragging
+                    ? "border-green-400 bg-green-500/10 scale-[1.01]"
+                    : "border-green-500/30 hover:border-green-500/60 hover:bg-green-500/[0.02]"
+                }`}
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragEnter={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                  handleImageUpload(e.dataTransfer.files);
+                }}
+              >
+                <div className="text-3xl mb-1 opacity-60">{isDragging ? "📂" : "🦴"}</div>
+                <span className="text-xs text-white/40">
+                  {isDragging ? "여기에 놓으세요!" : "클릭하거나 이미지를 드래그해서 놓으세요"}
+                </span>
                 <input
                   type="file"
                   accept="image/*"
