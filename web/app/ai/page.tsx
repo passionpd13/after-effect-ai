@@ -9,7 +9,7 @@ interface UploadedImage {
   cutoutDataUrl?: string;
   cutoutName?: string;
   isProcessing?: boolean;
-  imageType: "source" | "background";
+  imageType: "source" | "background" | "storyboard";
 }
 
 type Mode = "manual" | "auto";
@@ -240,11 +240,14 @@ export default function AiModePage() {
   };
 
   const toggleImageType = (index: number) => {
+    const cycle: Record<string, "source" | "background" | "storyboard"> = {
+      source: "background",
+      background: "storyboard",
+      storyboard: "source",
+    };
     setImages((prev) =>
       prev.map((img, i) =>
-        i === index
-          ? { ...img, imageType: img.imageType === "source" ? "background" : "source" }
-          : img
+        i === index ? { ...img, imageType: cycle[img.imageType] } : img
       )
     );
   };
@@ -348,7 +351,7 @@ export default function AiModePage() {
     const hasCutoutsAvailable = images.some((img) => img.cutoutName);
 
     const imageList = images.map((img, i) => {
-      const typeTag = img.imageType === "background" ? " [배경용]" : "";
+      const typeTag = img.imageType === "background" ? " [배경용]" : img.imageType === "storyboard" ? " [스토리보드]" : "";
       let line = `${i + 1}. ${img.name}${typeTag}`;
       if (img.cutoutName && img.cutoutDataUrl) {
         line += `\n   ${img.cutoutName} (배경 제거됨)`;
@@ -357,8 +360,12 @@ export default function AiModePage() {
     }).join("\n");
 
     const bgImages = images.filter((img) => img.imageType === "background");
+    const storyboardImages = images.filter((img) => img.imageType === "storyboard");
     const bgNote = bgImages.length > 0
       ? `\n\n## 배경 이미지 규칙\n배경으로 지정된 이미지(${bgImages.map((img) => img.name).join(", ")})는:\n- layers 배열의 마지막 항목으로 배치\n- z_position: -2000\n- effects(blur, vignette 등) 금지\n- opacity: 100`
+      : "";
+    const storyboardNote = storyboardImages.length > 0
+      ? `\n\n## 스토리보드 이미지\n스토리보드로 지정된 이미지(${storyboardImages.map((img) => img.name).join(", ")})는 연출 참고용입니다.\n- 이미지 안의 화살표, 텍스트, 레이아웃 지시를 분석하여 연출에 반영하세요\n- 스토리보드 이미지 자체는 영상에 사용하지 마세요`
       : "";
 
     const formatMap: Record<string, string> = {
@@ -378,7 +385,7 @@ ${description ? `- 설명: ${description}` : "- 이미지를 분석해서 내용
 
 ## 사용 가능한 이미지 파일 (이 파일명만 사용!)
 ${imageList}
-${hasCutoutsAvailable ? "※ _cutout.png 파일은 배경 제거된 객체입니다" : ""}${bgNote}
+${hasCutoutsAvailable ? "※ _cutout.png 파일은 배경 제거된 객체입니다" : ""}${bgNote}${storyboardNote}
 
 ## 핵심: 모든 이미지를 하나의 영상에서 다양하게 연출!
 
@@ -675,13 +682,16 @@ JSON만 출력해주세요.`;
                       </div>
                       <button
                         onClick={() => toggleImageType(i)}
+                        title="클릭하여 타입 변경"
                         className={`text-[10px] font-medium px-2 py-1 rounded-md transition-all flex-shrink-0 ${
                           img.imageType === "background"
                             ? "bg-blue-500/20 border border-blue-500/50 text-blue-400"
+                            : img.imageType === "storyboard"
+                            ? "bg-amber-500/20 border border-amber-500/50 text-amber-400"
                             : "bg-white/10 border border-white/20 text-white/50 hover:border-white/40"
                         }`}
                       >
-                        {img.imageType === "background" ? "배경" : "소스"}
+                        {img.imageType === "background" ? "🌄 배경" : img.imageType === "storyboard" ? "📋 스토리보드" : "🖼️ 소스"}
                       </button>
                       <button onClick={() => removeImage(i)} className="text-red-400/60 hover:text-red-400 text-xs px-2">✕</button>
                     </div>
