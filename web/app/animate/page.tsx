@@ -13,6 +13,9 @@ interface UploadedImage {
   file: File;
   dataUrl: string;
   name: string;
+  cutoutDataUrl?: string; // 배경 제거된 이미지
+  cutoutBlob?: Blob;
+  cutoutName?: string;
 }
 
 export default function AnimatePage() {
@@ -21,6 +24,8 @@ export default function AnimatePage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
+  const [bgRemoveProgress, setBgRemoveProgress] = useState("");
+  const [isBgRemoving, setIsBgRemoving] = useState(false);
 
   // API Keys
   const [geminiKey, setGeminiKey] = useState("");
@@ -117,6 +122,111 @@ export default function AnimatePage() {
     setImages((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // 배경 제거 (Canvas 기반 - 가장자리 flood fill로 배경 감지)
+  const removeWhiteBg = useCallback((imgElement: HTMLImageElement): Promise<Blob> => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement("canvas");
+      const w = imgElement.naturalWidth;
+      const h = imgElement.naturalHeight;
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(imgElement, 0, 0);
+      const imageData = ctx.getImageData(0, 0, w, h);
+      const data = imageData.data;
+
+      // 배경 색상 감지: 네 모서리 색상 평균
+      const corners = [
+        0, // top-left
+        (w - 1) * 4, // top-right
+        (h - 1) * w * 4, // bottom-left
+        ((h - 1) * w + (w - 1)) * 4, // bottom-right
+      ];
+      let bgR = 0, bgG = 0, bgB = 0;
+      for (const idx of corners) {
+        bgR += data[idx]; bgG += data[idx + 1]; bgB += data[idx + 2];
+      }
+      bgR = Math.round(bgR / 4); bgG = Math.round(bgG / 4); bgB = Math.round(bgB / 4);
+
+      // Flood fill from edges: 배경과 비슷한 색상(tolerance 내)인 픽셀을 투명으로
+      const tolerance = 40; // 색상 허용 오차
+      const visited = new Uint8Array(w * h);
+      const queue: number[] = [];
+
+      const isBgColor = (idx: number) => {
+        const r = data[idx * 4], g = data[idx * 4 + 1], b = data[idx * 4 + 2];
+        return Math.abs(r - bgR) + Math.abs(g - bgG) + Math.abs(b - bgB) < tolerance * 3;
+      };
+
+      // 테두리 픽셀을 시작점으로 추가
+      for (let x = 0; x < w; x++) {
+        if (isBgColor(x)) queue.push(x);
+        const bottom = (h - 1) * w + x;
+        if (isBgColor(bottom)) queue.push(bottom);
+      }
+      for (let y = 1; y < h - 1; y++) {
+        if (isBgColor(y * w)) queue.push(y * w);
+        const right = y * w + w - 1;
+        if (isBgColor(right)) queue.push(right);
+      }
+
+      // BFS flood fill
+      while (queue.length > 0) {
+        const pos = queue.pop()!;
+        if (visited[pos]) continue;
+        if (!isBgColor(pos)) continue;
+        visited[pos] = 1;
+        data[pos * 4 + 3] = 0; // 투명으로
+
+        const x = pos % w, y = Math.floor(pos / w);
+        if (x > 0) queue.push(pos - 1);
+        if (x < w - 1) queue.push(pos + 1);
+        if (y > 0) queue.push(pos - w);
+        if (y < h - 1) queue.push(pos + w);
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      canvas.toBlob((blob) => resolve(blob!), "image/png");
+    });
+  }, []);
+
+  const handleRemoveBg = useCallback(async () => {
+    if (images.length === 0) return;
+    setIsBgRemoving(true);
+
+    try {
+      const updatedImages = [...images];
+      for (let i = 0; i < updatedImages.length; i++) {
+        setBgRemoveProgress(`배경 제거 중... (${i + 1}/${updatedImages.length})`);
+        const img = updatedImages[i];
+        if (img.cutoutDataUrl) continue;
+
+        // 이미지 로드
+        const imgEl = await new Promise<HTMLImageElement>((resolve) => {
+          const el = new Image();
+          el.onload = () => resolve(el);
+          el.src = img.dataUrl;
+        });
+
+        const blob = await removeWhiteBg(imgEl);
+        const cutoutName = img.name.replace(/\.[^.]+$/, "_cutout.png");
+        const dataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.readAsDataURL(blob);
+        });
+
+        updatedImages[i] = { ...img, cutoutDataUrl: dataUrl, cutoutBlob: blob, cutoutName };
+      }
+      setImages(updatedImages);
+      setBgRemoveProgress("완료!");
+    } catch (e) {
+      setError(`배경 제거 실패: ${(e as Error).message}`);
+      setBgRemoveProgress("");
+    }
+    setIsBgRemoving(false);
+  }, [images, removeWhiteBg]);
+
   // AI 자동 생성
   const handleGenerate = async () => {
     if (!geminiKey) {
@@ -130,14 +240,19 @@ export default function AnimatePage() {
     setIsGenerating(true);
     setError("");
 
+    const hasCutouts = images.some((img) => img.cutoutName);
     const allImages = images.map((img) => ({
       name: img.name,
+      cutout_name: img.cutoutName || "",
       data_url: img.dataUrl,
       image_type: "character",
     }));
 
     try {
       const rigDesc = description || "";
+      const cutoutHint = hasCutouts
+        ? "\n★ 2레이어 모드: 각 이미지에 cutout_file이 있습니다. image_source에 cutout_file 필드를 추가해주세요."
+        : "";
       const actionHint = actionPreset ? `\n캐릭터 액션: ${RIG_ACTION_LABELS[actionPreset] || actionPreset}` : "";
       const modeHint = rigMode === "action" && actionPreset ? `\nrig_mode: "action", action: "${actionPreset}" 사용` : `\nrig_mode: "${rigMode}" 사용`;
 
@@ -150,7 +265,7 @@ export default function AnimatePage() {
           images: allImages,
           mode: "animate",
           style: "cinematic",
-          description: rigDesc + actionHint + modeHint,
+          description: rigDesc + cutoutHint + actionHint + modeHint,
           total_duration: animationDuration * images.length,
           scene_duration: animationDuration,
           format: "horizontal",
@@ -190,15 +305,22 @@ export default function AnimatePage() {
 
     for (const img of images) {
       folder.file(img.name, img.file);
+      // 배경 제거된 컷아웃도 포함
+      if (img.cutoutBlob && img.cutoutName) {
+        folder.file(img.cutoutName, img.cutoutBlob);
+      }
     }
 
     folder.file("사용법.txt",
-      "=== AE 캐릭터 애니메이션 ===\n\n" +
+      "=== AE 캐릭터 리깅 애니메이션 ===\n\n" +
       "1. After Effects 실행\n" +
       "2. 파일(F) > 스크립트(T) > 스크립트 파일 실행...\n" +
       "3. ae_auto_pipeline.jsx 선택\n" +
       "4. JSON 파일 선택\n" +
-      "5. Puppet Pin 애니메이션 자동 생성!\n\n" +
+      "5. 캐릭터 리깅 애니메이션 자동 생성!\n\n" +
+      "구조:\n" +
+      "- 원본 이미지: 정적 배경 레이어\n" +
+      "- _cutout.png: 캐릭터만 추출 (CC Bend It 적용)\n\n" +
       "MP4 출력: 컴포지션 > Adobe Media Encoder에 추가 (Ctrl+Alt+M)\n"
     );
 
@@ -312,14 +434,35 @@ export default function AnimatePage() {
                 <div className="mt-3 space-y-2">
                   {images.map((img, i) => (
                     <div key={i} className="flex items-center gap-3 bg-white/5 rounded-lg p-2">
-                      <img src={img.dataUrl} alt="" className="w-16 h-16 rounded object-contain bg-[#222] flex-shrink-0" />
+                      <img src={img.cutoutDataUrl || img.dataUrl} alt="" className="w-16 h-16 rounded object-contain bg-[#222] flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <div className="text-xs truncate">{img.name}</div>
-                        <div className="text-[10px] text-green-400/70 mt-0.5">씬 {i + 1} · {animationDuration}초 · Puppet Pin</div>
+                        <div className="text-[10px] mt-0.5">
+                          <span className="text-green-400/70">씬 {i + 1} · {animationDuration}초</span>
+                          {img.cutoutName && <span className="text-blue-400/70 ml-1">· 배경 제거됨</span>}
+                        </div>
                       </div>
                       <button onClick={() => removeImage(i)} className="text-red-400/60 hover:text-red-400 text-xs px-2">✕</button>
                     </div>
                   ))}
+
+                  {/* 배경 제거 버튼 */}
+                  <button
+                    onClick={handleRemoveBg}
+                    disabled={isBgRemoving || images.every((img) => img.cutoutName)}
+                    className="w-full py-2.5 rounded-lg text-xs font-medium transition-all bg-blue-600/20 border border-blue-500/30 hover:bg-blue-600/30 text-blue-400 disabled:opacity-40"
+                  >
+                    {isBgRemoving ? (
+                      <span>{bgRemoveProgress}</span>
+                    ) : images.every((img) => img.cutoutName) ? (
+                      "배경 제거 완료"
+                    ) : (
+                      "배경 제거 (캐릭터만 추출)"
+                    )}
+                  </button>
+                  <p className="text-[10px] text-white/30 text-center">
+                    가장자리 배경색 감지 · 무료 · 즉시 처리 · 흰 배경 웹툰에 최적
+                  </p>
                 </div>
               )}
             </div>

@@ -523,7 +523,11 @@ export async function POST(req: NextRequest) {
 
     if (isAnimateMode) {
       // 캐릭터 애니메이션 전용 프롬프트 (Puppet Pin만)
-      const fileList = images.map((img) => `- ${img.name}`).join("\n");
+      const fileList = images.map((img) => {
+        const cutout = (img as unknown as Record<string, string>).cutout_name;
+        return cutout ? `- ${img.name} (컷아웃: ${cutout})` : `- ${img.name}`;
+      }).join("\n");
+      const hasCutouts = images.some((img) => (img as unknown as Record<string, string>).cutout_name);
       parts.push({
         text: `이 캐릭터 이미지들을 분석하여 관절 리깅 애니메이션 JSON을 생성해주세요.
 
@@ -539,7 +543,7 @@ ${fileList}
 ★★★ 원본 이미지가 반드시 화면에 보여야 합니다! ★★★
 1. fit_mode: "cover", transform.position: {"x": ${fmt.w / 2}, "y": ${fmt.h / 2}}, scale: [100, 100], opacity: 100
 2. 이미지 1장 = 씬 1개, puppet 레이어 1개만 (텍스트/도형 금지!)
-3. **entrance 사용 금지!** entrance를 넣지 마세요
+3. **entrance, animation, exit 사용 금지!** 넣지 마세요
 4. joints 배열에 캐릭터 핵심 부위만 3~5개 (머리, 팔, 꼬리 등)
 5. x, y는 컴포지션 좌표 (가로: 0~${fmt.w}, 0~${fmt.h})
 6. amount 2~5, speed 0.3~0.5 (매우 미세하게!)
@@ -547,6 +551,9 @@ ${fileList}
 8. settings: width=${fmt.w}, height=${fmt.h}, fps=${fpsVal}, total_duration=${dur}
 9. transition_to_next: crossfade (duration 0.5)
 10. background.color: [1.0, 1.0, 1.0] (흰색 배경)
+${hasCutouts ? `11. ★★★ 컷아웃 파일이 있습니다! image_source에 cutout_file 필드를 추가하세요!
+    예: "image_source": { "file": "원본.jpg", "cutout_file": "원본_cutout.png", "fit_mode": "cover" }
+    JSX가 원본=고정배경, 컷아웃=캐릭터(CC Bend It) 2레이어로 처리합니다.` : ""}
 11. wiggle_elements, bend_zones, expression_links, rig_mode, action 전부 사용 금지
 
 JSON만 출력.`,

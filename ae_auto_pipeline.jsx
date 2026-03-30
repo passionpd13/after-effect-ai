@@ -1433,11 +1433,51 @@ function processV2(comp, data, projectFolder) {
                 } else {
                     log.push("    파일 찾음: " + puppetPath.fsName);
                     var puppetFootage = safeImportImage(puppetPath.fsName);
-                    aeLayer = comp.layers.add(puppetFootage);
-                    aeLayer.name = layerDef.name || layerDef.id || ("Rig_" + si + "_" + li);
-                    aeLayer.startTime = currentTime;
-                    aeLayer.inPoint = currentTime;
-                    aeLayer.outPoint = currentTime + sceneDur;
+
+                    // ★★★ 2레이어 시스템: 배경(원본, 고정) + 캐릭터(컷아웃, CC Bend It) ★★★
+                    var cutoutFile = layerDef.image_source.cutout_file;
+                    var cutoutPath = cutoutFile ? findImageFile(projectFolder, cutoutFile) : null;
+
+                    if (cutoutPath) {
+                        // 2레이어 모드: 컷아웃이 있으면 사용
+                        var cutoutFootage = safeImportImage(cutoutPath.fsName);
+
+                        // 하위: 원본 이미지 (배경, 고정)
+                        var bgLayer = comp.layers.add(puppetFootage);
+                        bgLayer.name = (layerDef.name || "BG") + "_bg";
+                        bgLayer.startTime = currentTime;
+                        bgLayer.inPoint = currentTime;
+                        bgLayer.outPoint = currentTime + sceneDur;
+
+                        // 상위: 컷아웃 이미지 (캐릭터, CC Bend It 적용)
+                        aeLayer = comp.layers.add(cutoutFootage);
+                        aeLayer.name = layerDef.name || layerDef.id || ("Rig_" + si + "_" + li);
+                        aeLayer.startTime = currentTime;
+                        aeLayer.inPoint = currentTime;
+                        aeLayer.outPoint = currentTime + sceneDur;
+
+                        // 배경 레이어도 동일한 스케일/위치 적용
+                        var bgFitMode = layerDef.image_source.fit_mode || "cover";
+                        var bgSrcW = puppetFootage.width, bgSrcH = puppetFootage.height;
+                        var bgScale = 100;
+                        if (bgSrcW > 0 && bgSrcH > 0) {
+                            bgScale = (bgFitMode === "cover")
+                                ? Math.max(comp.width / bgSrcW, comp.height / bgSrcH) * 100
+                                : Math.min(comp.width / bgSrcW, comp.height / bgSrcH) * 100;
+                        }
+                        bgLayer.property("Position").setValue([comp.width / 2, comp.height / 2]);
+                        bgLayer.property("Scale").setValue([bgScale, bgScale]);
+                        bgLayer.property("Opacity").setValue(100);
+                        log.push("    2레이어 모드: 배경(고정) + 컷아웃(CC Bend It)");
+                    } else {
+                        // 1레이어 모드: 원본 이미지에 직접 CC Bend It
+                        aeLayer = comp.layers.add(puppetFootage);
+                        aeLayer.name = layerDef.name || layerDef.id || ("Rig_" + si + "_" + li);
+                        aeLayer.startTime = currentTime;
+                        aeLayer.inPoint = currentTime;
+                        aeLayer.outPoint = currentTime + sceneDur;
+                        log.push("    1레이어 모드: 원본에 직접 CC Bend It");
+                    }
 
                     // fit_mode: 기본값 "cover"로 화면 꽉 채움
                     var pFitMode = layerDef.image_source.fit_mode || "cover";
@@ -1696,8 +1736,10 @@ function processV2(comp, data, projectFolder) {
                 }
             }
 
-            // --- 지속 애니메이션 ---
-            if (aeLayer && layerDef.animation && layerDef.animation.type !== "none") {
+            // --- 지속 애니메이션 (puppet은 CC Bend It만 사용 → 스킵) ---
+            if (aeLayer && layerDef.type === "puppet") {
+                // puppet 레이어는 Transform 애니메이션 금지 (이미지 전체 흔들림 방지)
+            } else if (aeLayer && layerDef.animation && layerDef.animation.type !== "none") {
                 var anim = layerDef.animation;
                 var animType = anim.type;
                 var intensity = anim.intensity || "normal";
@@ -1764,8 +1806,10 @@ function processV2(comp, data, projectFolder) {
                 }
             }
 
-            // --- Exit 애니메이션 ---
-            if (aeLayer && layerDef.exit && layerDef.exit.type !== "none") {
+            // --- Exit 애니메이션 (puppet은 항상 표시 → 스킵) ---
+            if (aeLayer && layerDef.type === "puppet") {
+                // puppet 레이어는 exit 금지 (opacity 0/scale 0 방지)
+            } else if (aeLayer && layerDef.exit && layerDef.exit.type !== "none") {
                 var ex = layerDef.exit;
                 var exitDur = ex.duration || 0.5;
                 var exitBefore = ex.time_before_end || 0.5;
