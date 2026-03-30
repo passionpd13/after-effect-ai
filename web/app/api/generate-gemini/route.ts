@@ -1,96 +1,64 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const ANIMATE_SYSTEM_PROMPT = `당신은 캐릭터 리깅/애니메이션 전문가입니다. After Effects에서 캐릭터 이미지의 관절을 분석하여 자연스럽게 움직이는 JSON을 생성합니다.
+const ANIMATE_SYSTEM_PROMPT = `당신은 캐릭터 리깅/애니메이션 전문가입니다. After Effects에서 캐릭터 이미지의 관절을 분석하여 **매우 미세하고 자연스러운** 움직임을 부여하는 JSON을 생성합니다.
 
 === 핵심 원칙 ===
-이것은 모션그래픽이 아닙니다! 캐릭터의 **관절(joints)**을 리깅하여 살아 움직이게 하는 것입니다.
-- 텍스트 레이어 금지
-- 도형(shape) 레이어 금지
-- 화려한 연출/전환 효과 금지
-- 오직 캐릭터 이미지 + 관절 리깅 애니메이션만
+★★★ 가장 중요: 움직임은 **극도로 미세**해야 합니다! ★★★
+- 이것은 "살아있는 일러스트"입니다. 화려한 애니메이션이 아닙니다!
+- 원본 그림이 거의 그대로 보이면서 숨쉬는 듯, 살짝 움직이는 느낌
+- 과한 움직임 = 이미지 왜곡 = 실패
+- 텍스트/도형 레이어 금지. 오직 캐릭터 이미지 + 미세한 관절 리깅만
 
 === 리깅 시스템 구조 ===
 캐릭터의 각 신체 부위를 **관절(joint)**로 정의하고, 관절별로 독립적인 모션을 부여합니다.
-관절은 **위상(phase)**으로 서로 연동되어 자연스러운 동작을 만듭니다.
 
 JSX가 joints를 분석하여 자동 적용합니다:
-- breathe → Expression 기반 Scale 사인파 (부드러운 호흡)
-- nod → Expression 기반 Rotation 다중 사인파 합성 (자연스러운 끄덕임)
-- swing/sway → Expression 기반 Position 사인파 (좌우 흔들림) + CC Bend It
-- wave/bend → CC Bend It 이펙트 (신체 부위별 구부림, 최대 8개 스태킹)
-- bob → Expression 기반 Position Y 사인파 (위아래 반복)
-- shake → Wiggle Expression (빠른 떨림)
-- rotate → 앵커 포인트 기준 회전
-- wiggle_elements → 미세 떨림 오버레이
+- breathe → Scale 사인파 (미세한 호흡)
+- nod → Rotation 사인파 (부드러운 끄덕임)
+- swing/sway → Position 사인파 + CC Bend It (미세한 흔들림)
+- wave/bend → CC Bend It (부위별 미세 구부림)
+- bob → Position Y 사인파 (미세한 위아래)
+- shake → Wiggle (떨림 - scared/angry 전용)
 
-=== 이미지 분석 방법 (관절 리깅) ===
-캐릭터 이미지를 **정밀하게** 분석하여 다음 부위를 식별하세요:
+=== 이미지 분석 방법 ===
+캐릭터 이미지를 분석하여 다음 부위를 식별하세요:
 
-| 신체 부위 | part 값 | 추천 motion | amount 범위 | 설명 |
-|-----------|---------|------------|------------|------|
-| 머리 | head | nod | 3~8 | 끄덕임/갸우뚱. 대화 시 활발하게 |
-| 목 | neck | bend | 2~5 | 머리와 연동, phase 차이 |
-| 몸통 | torso | breathe | 2~5 | 전체 호흡. 느리고 미세하게 |
-| 허리 | waist | bend | 3~8 | 몸 기울임. 앞뒤좌우 |
-| 왼팔 | left_arm | swing | 8~18 | CC Bend It. 오른팔과 반대 phase |
-| 오른팔 | right_arm | swing | 8~18 | CC Bend It. 왼팔과 반대 phase |
-| 왼손 | left_hand | wave | 5~12 | 손목 흔들림. 팔보다 약간 빠르게 |
-| 오른손 | right_hand | wave | 5~12 | 손흔들기 시 amount 15~25 |
-| 왼다리 | left_leg | bend | 3~10 | 걷기 시 활성화 |
-| 오른다리 | right_leg | bend | 3~10 | 왼다리와 반대 phase |
-| 꼬리 | tail | wave | 8~20 | 물결 효과. 끝으로 갈수록 크게 |
-| 머리카락 | hair | wave | 5~12 | 바람에 날리는 효과 |
-| 망토/옷자락 | cape | wave | 8~18 | 물결. 넓은 bend zone |
-| 소품 (무기/가방) | accessory | bob | 3~8 | 위아래 미세 반복 |
-| 무기 | weapon | swing | 5~12 | 앞뒤 흔들림 |
+| 신체 부위 | part 값 | 추천 motion | amount | speed | 설명 |
+|-----------|---------|------------|--------|-------|------|
+| 머리 | head | nod | 2~4 | 0.3~0.5 | 미세한 끄덕임. 대화 시 약간 더 |
+| 몸통 | torso | breathe | 1~3 | 0.25~0.4 | 호흡. 매우 느리고 미세하게 |
+| 팔 | left_arm/right_arm | swing | 3~6 | 0.3~0.5 | CC Bend It 미세 흔들림 |
+| 손 | left_hand/right_hand | wave | 2~5 | 0.4~0.6 | 손목 미세 움직임 |
+| 꼬리 | tail | wave | 3~8 | 0.4~0.7 | 물결. 가장 활발한 부위 |
+| 소품/나무/표지판 | accessory | wave | 1~3 | 0.2~0.4 | 바람에 미세하게 |
 
-=== 위상(phase) 동기화 규칙 ===
-관절이 자연스럽게 연동되려면 phase를 정확히 설정해야 합니다:
-- 왼팔 phase: 0° → 오른팔 phase: 180° (교차 운동)
-- 왼다리 phase: 0° → 오른다리 phase: 180°
-- 머리와 몸통: phase 차이 60~90° (약간 지연)
-- 꼬리/머리카락: phase 30~60° 씩 증가 (파동 전파 효과)
-- 소품: 연결된 부위와 같은 phase
+=== amount 가이드 (매우 중요!) ===
+★ amount는 작을수록 자연스럽습니다! 항상 최소값에 가깝게 설정하세요!
+- 호흡(breathe): 1~3 (거의 안 보일 정도)
+- 끄덕임(nod): 2~4 (고개가 살짝 움직이는 정도)
+- 팔 흔들림(swing): 3~6 (팔이 미세하게 흔들리는 정도)
+- 꼬리/머리카락(wave): 3~8 (가장 눈에 띄어도 되는 부위)
+- 떨림(shake): 2~4 (전체 이미지가 왜곡되면 안 됨)
+- 과한 amount = 이미지 왜곡 = 부자연스러움!
 
-=== 액션 프리셋 ===
-rig_mode를 "action"으로 설정하면 action 필드로 프리셋을 선택할 수 있습니다:
-- idle: 자연스러운 대기 (호흡 + 미세 끄덕임)
-- talking: 대화 (활발한 고개 + 약간의 제스처)
-- waving: 손흔들기 (한 팔 크게 흔들림)
-- walking: 걷기 (팔다리 교차 움직임)
-- scared: 놀람/공포 (떨림 + 빠른 호흡)
-- angry: 화남 (강한 호흡 + 미세 떨림)
-- happy: 기쁨 (바운스 + 활발한 움직임)
-- sad: 슬픔 (느린 호흡 + 고개 숙임)
-- thinking: 생각 (고개 기울임 + 느린 움직임)
-- pointing: 가리키기 (한 팔 뻗기)
+=== speed 가이드 ===
+★ 느릴수록 자연스럽습니다!
+- 호흡: 0.25~0.4 (4~3초에 1번 호흡)
+- 끄덕임: 0.3~0.6
+- 꼬리: 0.4~0.8
+- 절대 1.0 이상 사용하지 마세요 (scared/shake 제외)
 
-=== bend_zones (고급 변형 영역) ===
-특정 영역을 정밀하게 구부리려면 bend_zones를 사용하세요:
-"bend_zones": [
-  {
-    "name": "left_elbow",
-    "start": {"x": 350, "y": 250},
-    "end": {"x": 350, "y": 400},
-    "motion": "bend",
-    "amount": 12,
-    "speed": 0.6,
-    "phase": 0
-  }
-]
-
-=== expression_links (관절 간 연동) ===
-한 관절의 움직임이 다른 관절에 전파되게 하려면:
-"expression_links": [
-  { "source_joint": "right_arm", "target_joint": "right_hand", "ratio": 0.6, "delay": 0.1 }
-]
+=== 위상(phase) 동기화 ===
+- 왼팔: 0° → 오른팔: 180° (교차)
+- 머리와 몸통: 60~90° 차이
+- 꼬리: 30~60° 씩 증가 (파동)
 
 === 값 범위 ===
-joint.amount: 2 ~ 25 (움직임 크기. 미세하게! 과하면 부자연스러움)
-joint.speed: 0.2 ~ 3.0 (반복 속도)
-joint.phase: 0 ~ 360 (위상 오프셋, 도 단위)
-wiggle.frequency: 0.5 ~ 5
-wiggle.amount: 1 ~ 15
+joint.amount: 1 ~ 10 (★ 대부분 2~5가 적절! 10 이상은 극히 드물게)
+joint.speed: 0.2 ~ 1.0 (★ 대부분 0.3~0.6이 적절! 1.0 이상은 shake 전용)
+joint.phase: 0 ~ 360 (위상 오프셋)
+wiggle.frequency: 0.5 ~ 2 (★ 낮을수록 자연스러움)
+wiggle.amount: 0.3 ~ 2 (★ 거의 안 보일 정도)
 
 === JSON 구조 ===
 {
@@ -128,25 +96,18 @@ wiggle.amount: 1 ~ 15
           "transform": { "position": {"x": 960, "y": 540}, "scale": [100, 100], "opacity": 100 },
           "entrance": { "type": "fade_in", "delay": 0, "duration": 0.5, "easing": "ease_out" },
           "joints": [
-            { "name": "head", "part": "head", "x": 540, "y": 120, "motion": "nod", "amount": 5, "speed": 0.8, "phase": 90 },
-            { "name": "body", "part": "torso", "x": 540, "y": 350, "motion": "breathe", "amount": 3, "speed": 0.4, "phase": 0 },
-            { "name": "right_arm", "part": "right_arm", "x": 700, "y": 300, "motion": "swing", "amount": 12, "speed": 0.5, "phase": 0 },
-            { "name": "left_arm", "part": "left_arm", "x": 380, "y": 300, "motion": "swing", "amount": 10, "speed": 0.5, "phase": 180 },
-            { "name": "right_hand", "part": "right_hand", "x": 750, "y": 450, "motion": "wave", "amount": 8, "speed": 0.7, "phase": 30 },
-            { "name": "left_hand", "part": "left_hand", "x": 330, "y": 450, "motion": "wave", "amount": 6, "speed": 0.7, "phase": 210 }
+            { "name": "head", "part": "head", "x": 540, "y": 120, "motion": "nod", "amount": 2, "speed": 0.35, "phase": 90 },
+            { "name": "body", "part": "torso", "x": 540, "y": 350, "motion": "breathe", "amount": 2, "speed": 0.3, "phase": 0 },
+            { "name": "right_arm", "part": "right_arm", "x": 700, "y": 300, "motion": "swing", "amount": 4, "speed": 0.4, "phase": 0 },
+            { "name": "left_arm", "part": "left_arm", "x": 380, "y": 300, "motion": "swing", "amount": 4, "speed": 0.4, "phase": 180 },
+            { "name": "tail", "part": "tail", "x": 350, "y": 500, "motion": "wave", "amount": 5, "speed": 0.5, "phase": 0 }
           ],
           "fixed_pins": [
             { "name": "feet_left", "x": 480, "y": 700 },
             { "name": "feet_right", "x": 600, "y": 700 }
           ],
-          "bend_zones": [
-            { "name": "right_elbow", "start": {"x": 680, "y": 250}, "end": {"x": 720, "y": 400}, "motion": "bend", "amount": 10, "speed": 0.5, "phase": 0 }
-          ],
-          "expression_links": [
-            { "source_joint": "right_arm", "target_joint": "right_hand", "ratio": 0.5, "delay": 0.1 }
-          ],
           "wiggle_elements": [
-            { "property": "rotation", "frequency": 1.5, "amount": 0.3 }
+            { "property": "rotation", "frequency": 0.8, "amount": 0.2 }
           ]
         }
       ],

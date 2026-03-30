@@ -540,86 +540,87 @@ function applyEasing(property, easingType) {
 // ============================================================
 function applyActionPreset(action, breatheJoints, nodJoints, swayJoints, bendJoints, bobJoints, shakeJoints, allJoints) {
     // 액션 프리셋별 기본 관절 설정 (관절이 없는 경우 자동 생성)
+    // ★ 모든 프리셋 값을 미세하게 설정 (살아있는 일러스트 느낌)
     var presets = {
         idle: {
-            breathe: { amount: 3, speed: 0.4, phase: 0 },
-            nod: { amount: 3, speed: 0.3, phase: 90 },
+            breathe: { amount: 2, speed: 0.3, phase: 0 },
+            nod: { amount: 2, speed: 0.25, phase: 90 },
             sway: null, bend: null, bob: null, shake: null
         },
         talking: {
-            breathe: { amount: 4, speed: 0.5, phase: 0 },
-            nod: { amount: 6, speed: 1.2, phase: 0 },
-            sway: { amount: 3, speed: 0.6, phase: 45 },
+            breathe: { amount: 2, speed: 0.35, phase: 0 },
+            nod: { amount: 3, speed: 0.6, phase: 0 },
+            sway: { amount: 2, speed: 0.4, phase: 45 },
             bend: null, bob: null, shake: null
         },
         waving: {
-            breathe: { amount: 3, speed: 0.4, phase: 0 },
-            nod: { amount: 4, speed: 0.5, phase: 30 },
-            sway: { amount: 5, speed: 0.8, phase: 0 },
-            bend: { amount: 15, speed: 1.0, phase: 0 },
+            breathe: { amount: 2, speed: 0.3, phase: 0 },
+            nod: { amount: 2, speed: 0.35, phase: 30 },
+            sway: { amount: 3, speed: 0.5, phase: 0 },
+            bend: { amount: 6, speed: 0.6, phase: 0 },
             bob: null, shake: null
         },
         walking: {
-            breathe: { amount: 4, speed: 1.2, phase: 0 },
-            nod: { amount: 3, speed: 1.2, phase: 180 },
-            sway: { amount: 8, speed: 1.2, phase: 0 },
-            bend: { amount: 12, speed: 1.2, phase: 90 },
-            bob: { amount: 6, speed: 1.2, phase: 0 },
+            breathe: { amount: 2, speed: 0.7, phase: 0 },
+            nod: { amount: 2, speed: 0.7, phase: 180 },
+            sway: { amount: 4, speed: 0.7, phase: 0 },
+            bend: { amount: 5, speed: 0.7, phase: 90 },
+            bob: { amount: 3, speed: 0.7, phase: 0 },
             shake: null
         },
         scared: {
-            breathe: { amount: 5, speed: 1.5, phase: 0 },
-            nod: { amount: 4, speed: 2.0, phase: 0 },
+            breathe: { amount: 3, speed: 0.8, phase: 0 },
+            nod: { amount: 2, speed: 1.0, phase: 0 },
             sway: null,
-            bend: { amount: 8, speed: 1.8, phase: 45 },
+            bend: { amount: 3, speed: 0.8, phase: 45 },
             bob: null,
-            shake: { amount: 6, speed: 2.0, phase: 0 }
+            shake: { amount: 3, speed: 1.2, phase: 0 }
         },
         angry: {
-            breathe: { amount: 6, speed: 0.8, phase: 0 },
-            nod: { amount: 5, speed: 0.6, phase: 0 },
-            sway: { amount: 4, speed: 0.5, phase: 0 },
+            breathe: { amount: 3, speed: 0.5, phase: 0 },
+            nod: { amount: 3, speed: 0.4, phase: 0 },
+            sway: { amount: 2, speed: 0.35, phase: 0 },
             bend: null, bob: null,
-            shake: { amount: 4, speed: 1.5, phase: 0 }
+            shake: { amount: 2, speed: 0.8, phase: 0 }
         },
         happy: {
-            breathe: { amount: 4, speed: 0.6, phase: 0 },
-            nod: { amount: 5, speed: 0.8, phase: 0 },
-            sway: { amount: 6, speed: 0.7, phase: 0 },
-            bend: { amount: 10, speed: 0.8, phase: 30 },
-            bob: { amount: 8, speed: 0.9, phase: 0 },
+            breathe: { amount: 2, speed: 0.4, phase: 0 },
+            nod: { amount: 3, speed: 0.5, phase: 0 },
+            sway: { amount: 3, speed: 0.45, phase: 0 },
+            bend: { amount: 4, speed: 0.5, phase: 30 },
+            bob: { amount: 3, speed: 0.5, phase: 0 },
             shake: null
         },
         sad: {
-            breathe: { amount: 5, speed: 0.3, phase: 0 },
-            nod: { amount: 6, speed: 0.2, phase: 0 },
-            sway: { amount: 2, speed: 0.3, phase: 0 },
+            breathe: { amount: 3, speed: 0.2, phase: 0 },
+            nod: { amount: 3, speed: 0.15, phase: 0 },
+            sway: { amount: 1, speed: 0.2, phase: 0 },
             bend: null, bob: null, shake: null
         },
         thinking: {
-            breathe: { amount: 3, speed: 0.35, phase: 0 },
-            nod: { amount: 4, speed: 0.25, phase: 45 },
-            sway: { amount: 3, speed: 0.3, phase: 90 },
+            breathe: { amount: 2, speed: 0.3, phase: 0 },
+            nod: { amount: 2, speed: 0.2, phase: 45 },
+            sway: { amount: 2, speed: 0.25, phase: 90 },
             bend: null, bob: null, shake: null
         },
         pointing: {
-            breathe: { amount: 3, speed: 0.4, phase: 0 },
-            nod: { amount: 3, speed: 0.3, phase: 0 },
-            sway: { amount: 3, speed: 0.4, phase: 0 },
-            bend: { amount: 12, speed: 0.5, phase: 0 },
+            breathe: { amount: 2, speed: 0.3, phase: 0 },
+            nod: { amount: 2, speed: 0.25, phase: 0 },
+            sway: { amount: 2, speed: 0.3, phase: 0 },
+            bend: { amount: 5, speed: 0.35, phase: 0 },
             bob: null, shake: null
         },
         running: {
-            breathe: { amount: 5, speed: 2.0, phase: 0 },
-            nod: { amount: 4, speed: 2.0, phase: 180 },
-            sway: { amount: 10, speed: 2.0, phase: 0 },
-            bend: { amount: 15, speed: 2.0, phase: 90 },
-            bob: { amount: 10, speed: 2.0, phase: 0 },
+            breathe: { amount: 3, speed: 1.0, phase: 0 },
+            nod: { amount: 2, speed: 1.0, phase: 180 },
+            sway: { amount: 5, speed: 1.0, phase: 0 },
+            bend: { amount: 6, speed: 1.0, phase: 90 },
+            bob: { amount: 4, speed: 1.0, phase: 0 },
             shake: null
         },
         sleeping: {
-            breathe: { amount: 6, speed: 0.2, phase: 0 },
-            nod: { amount: 2, speed: 0.15, phase: 90 },
+            breathe: { amount: 3, speed: 0.15, phase: 0 },
+            nod: { amount: 1, speed: 0.1, phase: 90 },
             sway: null, bend: null, bob: null, shake: null
         }
     };
@@ -1455,6 +1456,13 @@ function processV2(comp, data, projectFolder) {
                         var jPhase = Number(jDef.phase) || 0;
                         var jPart = jDef.part || jDef.name || "body";
 
+                        // ★ 안전한 값 범위로 클램핑 (과도한 값 방지)
+                        if (jMotion === "breathe") jAmount = Math.min(jAmount, 5);
+                        else if (jMotion === "nod") jAmount = Math.min(jAmount, 6);
+                        else if (jMotion === "shake") jAmount = Math.min(jAmount, 6);
+                        else jAmount = Math.min(jAmount, 10); // swing, wave, bend, bob 등
+                        jSpeed = Math.min(jSpeed, 1.5); // 최대 속도 제한
+
                         var jointData = {
                             name: jDef.name || ("joint_" + ji),
                             part: jPart,
@@ -1484,21 +1492,20 @@ function processV2(comp, data, projectFolder) {
                         log.push("    액션 프리셋 적용: " + actionPreset);
                     }
 
-                    // === 1. 호흡 애니메이션 (Expression 기반 부드러운 사인파) ===
+                    // === 1. 호흡 애니메이션 (미세한 Scale 사인파) ===
                     if (breatheJoints.length > 0) {
                         try {
                             var bj = breatheJoints[0];
-                            var bAmt = bj.amount * 0.12;
+                            var bAmt = bj.amount * 0.08; // ★ 0.12→0.08 더 미세하게
                             var bSpd = bj.speed;
                             var bPhaseRad = bj.phase * Math.PI / 180;
-                            // Expression 기반: 더 부드러운 호흡
                             aeLayer.property("Scale").expression =
                                 "var base = value;\n" +
                                 "var amt = " + bAmt + ";\n" +
                                 "var spd = " + bSpd + ";\n" +
                                 "var ph = " + bPhaseRad.toFixed(4) + ";\n" +
                                 "var breath = Math.sin(time * spd * Math.PI * 2 + ph) * amt;\n" +
-                                "var breathY = breath * 1.3;\n" +
+                                "var breathY = breath * 1.2;\n" +
                                 "[base[0] + breath, base[1] + breathY]";
                             log.push("    호흡(Expression): scale ±" + bAmt.toFixed(2) + "% spd:" + bSpd);
                         } catch (breathErr) {
@@ -1506,20 +1513,19 @@ function processV2(comp, data, projectFolder) {
                         }
                     }
 
-                    // === 2. 끄덕임 (Expression 기반 자연스러운 회전) ===
+                    // === 2. 끄덕임 (미세한 Rotation 사인파) ===
                     if (nodJoints.length > 0) {
                         try {
                             var nj = nodJoints[0];
-                            var nAmt = nj.amount * 0.25;
+                            var nAmt = nj.amount * 0.15; // ★ 0.25→0.15 더 미세하게
                             var nSpd = nj.speed;
                             var nPhaseRad = nj.phase * Math.PI / 180;
-                            // 다중 사인파 합성으로 자연스러운 끄덕임
                             aeLayer.property("Rotation").expression =
                                 "var amt = " + nAmt + ";\n" +
                                 "var spd = " + nSpd + ";\n" +
                                 "var ph = " + nPhaseRad.toFixed(4) + ";\n" +
                                 "var primary = Math.sin(time * spd * Math.PI * 2 + ph) * amt;\n" +
-                                "var secondary = Math.sin(time * spd * 1.7 * Math.PI * 2 + ph + 0.5) * amt * 0.3;\n" +
+                                "var secondary = Math.sin(time * spd * 1.7 * Math.PI * 2 + ph + 0.5) * amt * 0.2;\n" +
                                 "primary + secondary";
                             log.push("    끄덕임(Expression): rotation ±" + nAmt.toFixed(1) + "° spd:" + nSpd);
                         } catch (nodErr) {
@@ -1527,11 +1533,11 @@ function processV2(comp, data, projectFolder) {
                         }
                     }
 
-                    // === 3. 좌우 흔들림/스웨이 (Expression 기반) ===
+                    // === 3. 좌우 흔들림/스웨이 (미세한 Position 사인파) ===
                     if (swayJoints.length > 0) {
                         try {
                             var sj = swayJoints[0];
-                            var sAmt = sj.amount;
+                            var sAmt = sj.amount * 0.5; // ★ 절반으로 줄임
                             var sSpd = sj.speed;
                             var sPhaseRad = sj.phase * Math.PI / 180;
                             aeLayer.property("Position").expression =
@@ -1540,7 +1546,7 @@ function processV2(comp, data, projectFolder) {
                                 "var spd = " + sSpd + ";\n" +
                                 "var ph = " + sPhaseRad.toFixed(4) + ";\n" +
                                 "var swayX = Math.sin(time * spd * Math.PI * 2 + ph) * amt;\n" +
-                                "var swayY = Math.sin(time * spd * 0.7 * Math.PI * 2 + ph + 1.0) * amt * 0.3;\n" +
+                                "var swayY = Math.sin(time * spd * 0.7 * Math.PI * 2 + ph + 1.0) * amt * 0.2;\n" +
                                 "[base[0] + swayX, base[1] + swayY]";
                             log.push("    스웨이(Expression): position ±" + sAmt + "px spd:" + sSpd);
                         } catch (swayErr) {
@@ -1548,11 +1554,11 @@ function processV2(comp, data, projectFolder) {
                         }
                     }
 
-                    // === 4. 위아래 반복 bob (Expression 기반) ===
+                    // === 4. 위아래 반복 bob (미세한 Position Y) ===
                     if (bobJoints.length > 0 && swayJoints.length === 0) {
                         try {
                             var boj = bobJoints[0];
-                            var boAmt = boj.amount;
+                            var boAmt = boj.amount * 0.5; // ★ 절반으로 줄임
                             var boSpd = boj.speed;
                             var boPhaseRad = boj.phase * Math.PI / 180;
                             aeLayer.property("Position").expression =
@@ -1568,12 +1574,12 @@ function processV2(comp, data, projectFolder) {
                         }
                     }
 
-                    // === 5. 떨림 shake (Expression 기반) ===
+                    // === 5. 떨림 shake (미세한 Wiggle) ===
                     if (shakeJoints.length > 0) {
                         try {
                             var skj = shakeJoints[0];
-                            var skAmt = skj.amount;
-                            var skFreq = skj.speed * 8;
+                            var skAmt = skj.amount * 0.4; // ★ 대폭 줄임
+                            var skFreq = Math.min(skj.speed * 6, 8); // ★ 주파수 제한
                             // shake는 position expression 오버라이드
                             if (swayJoints.length === 0 && bobJoints.length === 0) {
                                 aeLayer.property("Position").expression =
@@ -1592,9 +1598,9 @@ function processV2(comp, data, projectFolder) {
                         }
                     }
 
-                    // === 6. CC Bend It 관절 구부림 (다중 이펙트 스태킹) ===
+                    // === 6. CC Bend It 관절 구부림 (미세한 구부림) ===
                     var allBendable = bendJoints.concat(swayJoints);
-                    var bendCount = Math.min(allBendable.length, 8); // 최대 8개 CC Bend It
+                    var bendCount = Math.min(allBendable.length, 4); // ★ 최대 4개로 줄임 (너무 많으면 이미지 왜곡)
                     for (var bi = 0; bi < bendCount; bi++) {
                         try {
                             var bPin = allBendable[bi];
@@ -1639,13 +1645,14 @@ function processV2(comp, data, projectFolder) {
                                 bendEffect.property("End").setValue([compX, Math.min(comp.height, compY + bendLen)]);
                             }
 
-                            // Expression 기반 부드러운 벤드 애니메이션 (위상 오프셋 포함)
+                            // ★ 미세한 벤드 애니메이션 (amount를 절반으로 줄여서 적용)
+                            var safeBendAmt = bAmt2 * 0.5; // ★ 절반으로 줄임
                             bendEffect.property("Bend").expression =
-                                "var amt = " + bAmt2 + ";\n" +
+                                "var amt = " + safeBendAmt + ";\n" +
                                 "var spd = " + bSpd2 + ";\n" +
                                 "var ph = " + bPhase2.toFixed(4) + ";\n" +
                                 "var primary = Math.sin(time * spd * Math.PI * 2 + ph) * amt;\n" +
-                                "var detail = Math.sin(time * spd * 2.3 * Math.PI * 2 + ph + 1.2) * amt * 0.2;\n" +
+                                "var detail = Math.sin(time * spd * 2.3 * Math.PI * 2 + ph + 1.2) * amt * 0.15;\n" +
                                 "primary + detail";
 
                             log.push("    벤드[" + bi + "]: " + (bPin.name || bPin.part || bi) + " amt:" + bAmt2 + "° spd:" + bSpd2 + " phase:" + bPin.phase + "°");
@@ -1741,10 +1748,10 @@ function processV2(comp, data, projectFolder) {
                             }
                         }
                     } else if (breatheJoints.length === 0 && nodJoints.length === 0 && swayJoints.length === 0 && shakeJoints.length === 0) {
-                        // 관절이 전혀 없으면 기본 미세 위글 적용
+                        // 관절이 전혀 없으면 기본 미세 위글 적용 (매우 미세하게)
                         try {
-                            aeLayer.property("Rotation").expression = "wiggle(1.5, 0.5)";
-                            aeLayer.property("Position").expression = "wiggle(1, 2)";
+                            aeLayer.property("Rotation").expression = "wiggle(0.8, 0.3)";
+                            aeLayer.property("Position").expression = "wiggle(0.6, 1)";
                             log.push("    기본 위글 적용 (관절 미지정)");
                         } catch (defWigErr) {}
                     }
