@@ -22,7 +22,7 @@ scene.duration: 3.0 ~ 20.0 (초)
 transition.duration: 0.5 ~ 2.0 (초)
 
 font_size: 24 ~ 120 (픽셀)
-font_weight: "regular" | "bold" | "black" 중 하나만
+font_weight: "bold" | "black" 중 하나만 (regular 사용 금지!)
 stroke.width: 1 ~ 10
 
 effects.params 값 범위:
@@ -104,15 +104,18 @@ format: "vertical" | "horizontal" | "square"
           "text_content": {
             "text": "제목 텍스트",
             "font_size": 72,
-            "font_weight": "bold",
+            "font_weight": "black",
             "color": [1.0, 1.0, 1.0],
             "alignment": "center",
             "stroke": {
               "enabled": true,
               "color": [0.0, 0.0, 0.0],
-              "width": 4
+              "width": 6
             }
           },
+          "effects": [
+            {"type": "drop_shadow", "params": {"distance": 8, "softness": 10}}
+          ],
           "entrance": {
             "type": "pop",
             "delay": 0.8,
@@ -208,6 +211,13 @@ format: "vertical" | "horizontal" | "square"
 - 배경 이미지는 z_position: -2000 (가장 뒤)
 - 배경 이미지에 effects(blur, vignette 등) 절대 금지
 - 배경 이미지 opacity: 100
+
+=== 텍스트 가독성 규칙 (필수!) ===
+- font_weight는 반드시 "bold" 또는 "black" (regular 절대 금지)
+- 모든 텍스트에 stroke 필수 (enabled: true, color: [0,0,0], width: 4~6)
+- 모든 텍스트에 drop_shadow 효과 필수 (distance: 5~10, softness: 8~15)
+- 배경 위 텍스트는 font_size 최소 48 이상
+- 텍스트 color는 배경과 대비되는 밝은 색 사용 (흰색, 밝은 노랑 등)
 
 === 연출 규칙 ===
 - 한 씬에 여러 이미지 동시 배치 (이미지 1장 = 씬 1개 금지!)
