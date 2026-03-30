@@ -1,5 +1,118 @@
 import { NextRequest, NextResponse } from "next/server";
 
+const ANIMATE_SYSTEM_PROMPT = `당신은 캐릭터 애니메이션 전문가입니다. After Effects Puppet Pin Tool을 사용하여 캐릭터 이미지에 자연스러운 움직임을 부여하는 JSON을 생성합니다.
+
+=== 핵심 원칙 ===
+이것은 모션그래픽이 아닙니다! 캐릭터 이미지의 관절/신체 부위를 Puppet Pin으로 움직이는 것입니다.
+- 텍스트 레이어 금지
+- 도형(shape) 레이어 금지
+- 화려한 연출/전환 효과 금지
+- 오직 캐릭터 이미지 + Puppet Pin 애니메이션만
+
+=== 이미지 분석 방법 ===
+캐릭터 이미지를 분석하여 다음 부위를 식별하세요:
+- 머리/얼굴: nod (끄덕임) 또는 shake (좌우 흔들림)
+- 몸통/허리: breathe (호흡, 미세 상하)
+- 왼팔/오른팔: swing (흔들림) 또는 wave (물결)
+- 왼손/오른손: wave (흔들기) 또는 bob (위아래)
+- 왼다리/오른다리: bob (걷기 느낌) 또는 swing
+- 꼬리/망토/머리카락/소품: wave (물결) 또는 bend (구부림)
+- 입/턱: nod (미세하게, amount 2~4)
+
+=== puppet pin.motion 종류 ===
+- nod: 상하 사인파 (머리 끄덕임, 입 움직임)
+- swing: 진자 좌우 흔들림 (팔, 다리)
+- wave: 연속 사인파 물결 (꼬리, 머리카락, 망토)
+- breathe: 느린 상하 호흡 (몸통)
+- shake: 빠른 떨림 (긴장, 분노 표현)
+- bob: 위아래 반복 (걷기, 떠있는 느낌)
+- bend: CC Bend It 구부리기 (꼬리, 나무)
+
+=== 값 범위 ===
+pin.amount: 2 ~ 20 (px, 움직임 크기. 미세하게! 과하면 부자연스러움)
+pin.speed: 0.3 ~ 2.0 (반복 속도)
+wiggle.frequency: 1 ~ 5
+wiggle.amount: 1 ~ 10
+
+=== JSON 구조 ===
+{
+  "project": {
+    "name": "영문소문자_밑줄만",
+    "description": "한국어 설명",
+    "style_preset": "cinematic",
+    "version": "2.0"
+  },
+  "settings": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 30,
+    "format": "horizontal",
+    "total_duration": 30,
+    "background": {
+      "type": "solid",
+      "color": [0.05, 0.05, 0.08]
+    }
+  },
+  "global_style": { "font_family": "NotoSansKR" },
+  "scenes": [
+    {
+      "id": 1,
+      "duration": 10,
+      "description": "씬 설명",
+      "layers": [
+        {
+          "id": "char_1",
+          "type": "puppet",
+          "name": "캐릭터 이름",
+          "image_source": { "file": "실제파일명.확장자", "fit_mode": "contain" },
+          "transform": { "position": {"x": 960, "y": 540}, "scale": [100, 100], "opacity": 100 },
+          "entrance": { "type": "fade_in", "delay": 0, "duration": 0.5, "easing": "ease_out" },
+          "pins": [
+            { "name": "head", "x": 540, "y": 120, "motion": "nod", "amount": 5, "speed": 0.8 },
+            { "name": "body", "x": 540, "y": 350, "motion": "breathe", "amount": 3, "speed": 0.4 },
+            { "name": "right_arm", "x": 700, "y": 300, "motion": "swing", "amount": 10, "speed": 0.5 },
+            { "name": "left_arm", "x": 380, "y": 300, "motion": "swing", "amount": 8, "speed": 0.6 },
+            { "name": "right_hand", "x": 750, "y": 450, "motion": "wave", "amount": 6, "speed": 0.7 },
+            { "name": "left_hand", "x": 330, "y": 450, "motion": "bob", "amount": 4, "speed": 0.5 }
+          ],
+          "fixed_pins": [
+            { "name": "feet_left", "x": 480, "y": 700 },
+            { "name": "feet_right", "x": 600, "y": 700 }
+          ],
+          "wiggle_elements": [
+            { "property": "rotation", "frequency": 1.5, "amount": 0.5 }
+          ]
+        }
+      ],
+      "transition_to_next": { "type": "crossfade", "duration": 0.5 }
+    }
+  ],
+  "audio_global": { "bgm": "", "bgm_volume": 0.3 },
+  "render": { "output_format": "mp4", "codec": "h264", "quality": "high", "output_filename": "output.mp4" }
+}
+
+=== 핀 좌표 규칙 ===
+- x, y는 이미지 내 실제 픽셀 좌표 (이미지의 원본 해상도 기준이 아닌, 컴포지션에서의 위치)
+- 이미지가 contain으로 맞춰진 상태에서 캐릭터의 각 부위 위치를 추정
+- 고정 핀(fixed_pins)은 반드시 지정! (발, 바닥 접점) → 없으면 전체가 흔들림
+- 핀은 6~12개 정도가 이상적
+- 각 핀마다 적절한 motion과 amount를 다르게 설정 (단조로움 방지)
+- 머리: amount 3~8 / 팔: amount 8~15 / 몸통: amount 2~5 / 다리: amount 3~8
+
+=== 씬 규칙 ===
+- 이미지 1장 = 씬 1개 (각 씬에 puppet 레이어 1개만)
+- 씬에 텍스트나 도형 추가하지 마세요!
+- 각 씬의 layers 배열에는 해당 이미지의 puppet 레이어만 넣으세요
+- transition_to_next: crossfade (duration 0.5) 사용
+- 모든 scenes의 duration 합 = settings.total_duration
+- entrance는 fade_in만 사용 (화려한 연출 금지)
+
+=== 중요 ===
+- image_source.file은 반드시 제공된 파일 목록의 실제 파일명 그대로 사용 (확장자 포함)
+- 존재하지 않는 파일명 생성 금지, .png 임의 변환 금지
+- JSON만 출력 (설명 텍스트 절대 포함 금지)
+- $schema, definitions, properties 등 스키마 키워드 포함 금지`;
+
 const SYSTEM_PROMPT = `당신은 모션그래픽 전문가입니다. After Effects용 JSON을 생성합니다.
 
 === 값 범위 규칙 (반드시 지켜야 함!) ===
@@ -293,6 +406,7 @@ export async function POST(req: NextRequest) {
       scene_duration,
       format: vidFormat,
       fps,
+      mode,
     }: {
       api_key: string;
       images: { name: string; data_url: string; is_cutout?: boolean; image_type?: string }[];
@@ -302,6 +416,7 @@ export async function POST(req: NextRequest) {
       scene_duration: number;
       format: string;
       fps: number;
+      mode?: "motiongraphic" | "animate";
     } = body;
 
     if (!api_key) {
@@ -369,8 +484,40 @@ export async function POST(req: NextRequest) {
       ? `\n캐릭터 이미지: ${characterImages.map((img) => img.name).join(", ")} → type: "puppet" 레이어로 생성. 이미지를 분석하여 움직일 부위(머리, 팔, 소품 등)에 핀 좌표 지정. 고정 핀(발, 바닥) 필수. amount는 미세하게(2~15px).`
       : "";
 
-    parts.push({
-      text: `이 이미지들로 ancrid 수준의 고퀄리티 모션그래픽 JSON을 생성해주세요.
+    const isAnimateMode = mode === "animate";
+
+    if (isAnimateMode) {
+      // 캐릭터 애니메이션 전용 프롬프트 (Puppet Pin만)
+      const fileList = images.map((img) => `- ${img.name}`).join("\n");
+      parts.push({
+        text: `이 캐릭터 이미지들을 분석하여 Puppet Pin 애니메이션 JSON을 생성해주세요.
+
+포맷: ${fmt.label} (${fmt.w}x${fmt.h}), FPS: ${fpsVal}
+전체 영상 길이: ${dur}초 (settings.total_duration = ${dur})
+이미지 ${images.length}장 → 씬 ${images.length}개 (각 씬 ${sDur}초)
+${description ? `연출 설명: ${description}` : ""}
+
+사용 가능한 파일 (반드시 이 파일명 그대로 사용, 확장자 포함):
+${fileList}
+
+요구사항:
+1. 이미지 1장 = 씬 1개, 각 씬에 puppet 레이어 1개만 (텍스트/도형 레이어 추가 금지!)
+2. 각 이미지를 분석하여 캐릭터의 머리, 팔, 다리, 몸통, 손 등 부위를 식별하고 핀 배치
+3. 각 부위에 맞는 motion 프리셋 선택 (머리→nod, 팔→swing, 몸통→breathe 등)
+4. fixed_pins로 발/바닥 접점 반드시 고정 (안 하면 전체가 흔들림)
+5. amount는 미세하게 (머리 3~8, 팔 8~15, 몸통 2~5)
+6. 핀은 이미지당 6~12개
+7. settings: width=${fmt.w}, height=${fmt.h}, fps=${fpsVal}, total_duration=${dur}
+8. transition_to_next: crossfade (duration 0.5)
+9. entrance: fade_in만 사용
+10. wiggle_elements로 미세한 자연스러운 떨림 추가
+
+JSON만 출력.`,
+      });
+    } else {
+      // 모션그래픽 프롬프트 (기존)
+      parts.push({
+        text: `이 이미지들로 ancrid 수준의 고퀄리티 모션그래픽 JSON을 생성해주세요.
 
 스타일: ${style}
 포맷: ${fmt.label} (${fmt.w}x${fmt.h}), FPS: ${fpsVal}
@@ -395,7 +542,8 @@ ${imageList}${bgNote}${storyboardNote}${characterNote}
 10. 텍스트는 한국어, 세부 타이밍은 자유롭게
 
 JSON만 출력.`,
-    });
+      });
+    }
 
     // Gemini API 호출
     const model = (body.model as string) || "gemini-2.5-flash";
@@ -406,7 +554,7 @@ JSON만 출력.`,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         system_instruction: {
-          parts: [{ text: SYSTEM_PROMPT }],
+          parts: [{ text: isAnimateMode ? ANIMATE_SYSTEM_PROMPT : SYSTEM_PROMPT }],
         },
         contents: [
           {
