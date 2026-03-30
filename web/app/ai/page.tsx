@@ -479,8 +479,7 @@ JSON만 출력해주세요.`;
 
     // 원본 이미지 + 컷아웃 이미지
     for (const img of images) {
-      const res = await fetch(img.dataUrl);
-      folder.file(img.name, await res.blob());
+      folder.file(img.name, img.file);
       if (img.cutoutDataUrl && img.cutoutName) {
         const cutRes = await fetch(img.cutoutDataUrl);
         folder.file(img.cutoutName, await cutRes.blob());

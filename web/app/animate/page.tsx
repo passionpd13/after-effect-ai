@@ -173,8 +173,7 @@ export default function AnimatePage() {
     } catch {}
 
     for (const img of images) {
-      const res = await fetch(img.dataUrl);
-      folder.file(img.name, await res.blob());
+      folder.file(img.name, img.file);
     }
 
     folder.file("사용법.txt",
