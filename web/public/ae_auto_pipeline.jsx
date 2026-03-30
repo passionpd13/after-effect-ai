@@ -1397,23 +1397,40 @@ function processV2(comp, data, projectFolder) {
                     aeLayer.inPoint = currentTime;
                     aeLayer.outPoint = currentTime + sceneDur;
 
-                    // fit_mode 적용
-                    var pFitMode = layerDef.image_source.fit_mode || "contain";
+                    // ★ fit_mode: 기본값 "cover"로 화면 꽉 채움
+                    var pFitMode = layerDef.image_source.fit_mode || "cover";
                     var pSrcW = puppetFootage.width;
                     var pSrcH = puppetFootage.height;
                     var pBaseScale = 100;
                     if (pSrcW > 0 && pSrcH > 0) {
                         if (pFitMode === "cover") {
                             pBaseScale = Math.max(comp.width / pSrcW, comp.height / pSrcH) * 100;
-                        } else {
+                        } else if (pFitMode === "contain") {
                             pBaseScale = Math.min(comp.width / pSrcW, comp.height / pSrcH) * 100;
                         }
-                        aeLayer.property("Scale").setValue([pBaseScale, pBaseScale]);
                     }
 
                     var scaleFactor = pBaseScale / 100;
                     var imgOffX = (comp.width - pSrcW * scaleFactor) / 2;
                     var imgOffY = (comp.height - pSrcH * scaleFactor) / 2;
+
+                    // ★★★ 핵심 수정: Transform을 Expression 적용 전에 먼저 설정 ★★★
+                    // Position을 컴포지션 중앙으로 설정 (Expression이 value 참조 시 올바른 위치 사용)
+                    var puppetPosX = comp.width / 2;
+                    var puppetPosY = comp.height / 2;
+                    if (layerDef.transform && layerDef.transform.position) {
+                        puppetPosX = Number(layerDef.transform.position.x) || puppetPosX;
+                        puppetPosY = Number(layerDef.transform.position.y) || puppetPosY;
+                    }
+                    aeLayer.property("Position").setValue([puppetPosX, puppetPosY]);
+                    aeLayer.property("Scale").setValue([pBaseScale, pBaseScale]);
+                    if (layerDef.transform && layerDef.transform.opacity !== undefined) {
+                        aeLayer.property("Opacity").setValue(Number(layerDef.transform.opacity) || 100);
+                    }
+                    if (layerDef.transform && layerDef.transform.rotation) {
+                        aeLayer.property("Rotation").setValue(Number(layerDef.transform.rotation) || 0);
+                    }
+                    log.push("    위치: [" + puppetPosX + ", " + puppetPosY + "] 스케일: " + pBaseScale.toFixed(1) + "% (fit:" + pFitMode + ")");
 
                     // 리그 모드 판별
                     var rigMode = layerDef.rig_mode || "simple";
@@ -1740,8 +1757,8 @@ function processV2(comp, data, projectFolder) {
               }
             }
 
-            // --- 공통: Transform 적용 ---
-            if (aeLayer && layerDef.transform) {
+            // --- 공통: Transform 적용 (puppet은 위에서 이미 처리됨 → 스킵) ---
+            if (aeLayer && layerDef.transform && layerDef.type !== "puppet") {
               try {
                 var t = layerDef.transform;
                 if (t.position) {
