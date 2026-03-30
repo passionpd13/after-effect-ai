@@ -17,13 +17,59 @@
 // [0] 유틸리티 함수
 // ============================================================
 
-// 파일 헤더를 읽어서 실제 이미지 포맷 감지
-// ★ 파일을 복사하거나 이름을 변경하지 않음! 원본 경로를 그대로 반환
+// 파일 헤더를 읽어서 실제 이미지 포맷 감지 → 확장자 불일치 시 원본을 RENAME
+// ★ 복사본을 만들지 않음! 원본 파일 자체의 확장자를 변경하여 JSON 참조와 무관하게 처리
 function detectAndFixImageFile(filePath) {
     var f = new File(filePath);
     if (!f.exists) return f;
-    // 원본 파일을 그대로 반환 (AE는 확장자와 실제 포맷이 달라도 대부분 임포트 가능)
-    return f;
+
+    // 바이너리 모드로 처음 4바이트 읽기
+    f.open("r");
+    f.encoding = "BINARY";
+    var header = f.read(4);
+    f.close();
+
+    var actualExt = "";
+    if (header.length >= 4) {
+        var b0 = header.charCodeAt(0), b1 = header.charCodeAt(1);
+        var b2 = header.charCodeAt(2), b3 = header.charCodeAt(3);
+        if (b0 === 0x89 && b1 === 0x50 && b2 === 0x4E && b3 === 0x47) actualExt = ".png";
+        else if (b0 === 0xFF && b1 === 0xD8 && b2 === 0xFF) actualExt = ".jpg";
+        else if (b0 === 0x47 && b1 === 0x49 && b2 === 0x46) actualExt = ".gif";
+        else if (b0 === 0x42 && b1 === 0x4D) actualExt = ".bmp";
+        else if (b0 === 0x52 && b1 === 0x49 && b2 === 0x46 && b3 === 0x46) actualExt = ".webp";
+    }
+    if (!actualExt) return f;
+
+    var currentName = f.name;
+    var dotIdx = currentName.lastIndexOf(".");
+    var currentExt = dotIdx >= 0 ? currentName.slice(dotIdx).toLowerCase() : "";
+    if (currentExt === actualExt || (currentExt === ".jpeg" && actualExt === ".jpg")) return f;
+
+    // 확장자 불일치! 원본 파일을 RENAME (복사 아님!)
+    var newName = dotIdx >= 0 ? currentName.slice(0, dotIdx) + actualExt : currentName + actualExt;
+    var newPath = new File(f.parent.fsName + "/" + newName);
+    f.rename(newName);
+    return new File(f.parent.fsName + "/" + newName);
+}
+
+// 이미지를 안전하게 임포트 (PNGIO 오류 시 확장자 수정 후 재시도)
+function safeImportImage(filePath) {
+    var f = new File(filePath);
+    // 1차: 그대로 임포트 시도
+    try {
+        var opts = new ImportOptions(f);
+        return app.project.importFile(opts);
+    } catch (e1) {
+        // 2차: 확장자 수정 후 재시도
+        var fixed = detectAndFixImageFile(filePath);
+        try {
+            var opts2 = new ImportOptions(fixed);
+            return app.project.importFile(opts2);
+        } catch (e2) {
+            throw new Error("임포트 실패: " + f.name + " → " + e2.toString());
+        }
+    }
 }
 
 // 프로젝트 폴더에서 이미지 파일 찾기 (파일명 불일치 대응)
@@ -191,10 +237,8 @@ function importAndPlaceImage(comp, scene, startTime, projectFolder) {
         return null;
     }
     
-    // 이미지 임포트 (확장자/내용 불일치 자동 수정)
-    imagePath = detectAndFixImageFile(imagePath);
-    var importOptions = new ImportOptions(imagePath);
-    var footage = app.project.importFile(importOptions);
+    // 이미지 임포트 (PNGIO 오류 시 확장자 수정 후 재시도)
+    var footage = safeImportImage(imagePath.fsName);
     
     // 컴프에 추가
     var layer = comp.layers.add(footage);
@@ -1211,8 +1255,7 @@ function processV2(comp, data, projectFolder) {
                 } else {
                     try {
                         log.push("    파일 찾음: " + imgPath.fsName);
-                        var importOpts = new ImportOptions(imgPath);
-                        var footage = app.project.importFile(importOpts);
+                        var footage = safeImportImage(imgPath.fsName);
                         aeLayer = comp.layers.add(footage);
                         aeLayer.name = layerDef.name || layerDef.id || ("Layer_" + si + "_" + li);
 
@@ -1399,8 +1442,7 @@ function processV2(comp, data, projectFolder) {
                     alert("⚠️ 이미지 파일 없음!\n\n" + errMsg);
                 } else {
                     log.push("    파일 찾음: " + puppetPath.fsName);
-                    var puppetImport = new ImportOptions(puppetPath);
-                    var puppetFootage = app.project.importFile(puppetImport);
+                    var puppetFootage = safeImportImage(puppetPath.fsName);
                     aeLayer = comp.layers.add(puppetFootage);
                     aeLayer.name = layerDef.name || layerDef.id || ("Rig_" + si + "_" + li);
                     aeLayer.startTime = currentTime;
