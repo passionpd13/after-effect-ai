@@ -1,6 +1,13 @@
 "use client";
 import { useState, useCallback, useEffect } from "react";
 import Navbar from "@/components/Navbar";
+import {
+  RIG_ACTION_PRESETS,
+  RIG_ACTION_LABELS,
+  RIG_MODE_LABELS,
+  RIG_BODY_PART_LABELS,
+  RIG_JOINT_MOTION_LABELS,
+} from "@/lib/schema-data";
 
 interface UploadedImage {
   file: File;
@@ -23,6 +30,8 @@ export default function AnimatePage() {
   // 설정
   const [animationDuration, setAnimationDuration] = useState(5);
   const [description, setDescription] = useState("");
+  const [rigMode, setRigMode] = useState<string>("advanced");
+  const [actionPreset, setActionPreset] = useState<string>("");
 
   // localStorage에서 키 복원
   useEffect(() => {
@@ -125,6 +134,10 @@ export default function AnimatePage() {
     }));
 
     try {
+      const rigDesc = description || "";
+      const actionHint = actionPreset ? `\n캐릭터 액션: ${RIG_ACTION_LABELS[actionPreset] || actionPreset}` : "";
+      const modeHint = rigMode === "action" && actionPreset ? `\nrig_mode: "action", action: "${actionPreset}" 사용` : `\nrig_mode: "${rigMode}" 사용`;
+
       const res = await fetch("/api/generate-gemini", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -134,7 +147,7 @@ export default function AnimatePage() {
           images: allImages,
           mode: "animate",
           style: "cinematic",
-          description: description || "",
+          description: rigDesc + actionHint + modeHint,
           total_duration: animationDuration * images.length,
           scene_duration: animationDuration,
           format: "horizontal",
@@ -202,10 +215,10 @@ export default function AnimatePage() {
         {/* Header */}
         <div className="text-center mb-6">
           <h1 className="text-3xl font-bold mb-2">
-            <span className="text-gradient">AI 캐릭터 애니메이션</span>
+            <span className="text-gradient">AI 캐릭터 리깅 애니메이션</span>
           </h1>
           <p className="text-white/50 text-sm">
-            일러스트/만화 이미지를 올리면 AI가 Puppet Pin 애니메이션을 자동 생성합니다
+            일러스트/만화 캐릭터의 관절을 AI가 자동 분석하여 자연스럽게 움직이는 애니메이션을 생성합니다
           </p>
         </div>
 
@@ -308,10 +321,56 @@ export default function AnimatePage() {
               )}
             </div>
 
-            {/* Settings */}
+            {/* Rig Settings */}
             <div className="card-glass p-5">
-              <h2 className="text-base font-bold mb-3">설정</h2>
+              <h2 className="text-base font-bold mb-3">리깅 설정</h2>
               <div className="space-y-4">
+                {/* Rig Mode */}
+                <div className="space-y-2">
+                  <label className="text-xs text-white/50">리깅 모드</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(["simple", "advanced", "action"] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        onClick={() => {
+                          setRigMode(mode);
+                          if (mode !== "action") setActionPreset("");
+                        }}
+                        className={`py-2 px-2 rounded-lg text-[11px] font-medium transition-all ${
+                          rigMode === mode
+                            ? "bg-green-500/20 border border-green-500/50 text-green-400"
+                            : "bg-white/5 border border-white/10 text-white/50 hover:border-white/30"
+                        }`}
+                      >
+                        {RIG_MODE_LABELS[mode]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Action Preset (when action mode) */}
+                {rigMode === "action" && (
+                  <div className="space-y-2">
+                    <label className="text-xs text-white/50">액션 프리셋</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {RIG_ACTION_PRESETS.map((act) => (
+                        <button
+                          key={act}
+                          onClick={() => setActionPreset(act)}
+                          className={`py-1.5 px-2 rounded-md text-[10px] transition-all ${
+                            actionPreset === act
+                              ? "bg-green-500/20 border border-green-500/50 text-green-400"
+                              : "bg-white/5 border border-white/10 text-white/40 hover:border-white/20"
+                          }`}
+                        >
+                          {RIG_ACTION_LABELS[act]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Duration */}
                 <div className="space-y-2">
                   <label className="text-xs text-white/50">장당 애니메이션 길이</label>
                   <div className="flex items-center gap-3">
@@ -332,11 +391,12 @@ export default function AnimatePage() {
                   </div>
                 </div>
 
+                {/* Description */}
                 <div className="space-y-2">
                   <label className="text-xs text-white/50">연출 설명 (선택)</label>
                   <textarea
                     className="input-field w-full h-16 resize-none text-sm"
-                    placeholder="예: 캐릭터가 고개를 끄덕이며 팔을 흔드는 느낌"
+                    placeholder="예: 캐릭터가 무서워서 떨고 있는 느낌, 팔을 흔들며 인사하는 모습"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                   />
@@ -344,31 +404,40 @@ export default function AnimatePage() {
               </div>
             </div>
 
-            {/* Motion Presets Info */}
+            {/* Body Parts & Joint Motions Reference */}
             <div className="card-glass p-5">
-              <h2 className="text-base font-bold mb-3">지원 모션</h2>
-              <div className="grid grid-cols-2 gap-2 text-[11px]">
-                {[
-                  { icon: "😊", name: "nod", desc: "머리 끄덕" },
-                  { icon: "👋", name: "swing", desc: "팔/물건 흔들림" },
-                  { icon: "🌊", name: "wave", desc: "망토/꼬리/바람" },
-                  { icon: "💨", name: "breathe", desc: "호흡 (몸통)" },
-                  { icon: "😰", name: "shake", desc: "떨림/긴장" },
-                  { icon: "⬆️", name: "bob", desc: "위아래 반복" },
-                  { icon: "🔄", name: "bend", desc: "구부리기" },
-                ].map((m) => (
-                  <div key={m.name} className="flex items-center gap-2 bg-white/5 rounded-md px-2 py-1.5">
-                    <span>{m.icon}</span>
-                    <div>
-                      <span className="text-green-400 font-medium">{m.name}</span>
-                      <span className="text-white/40 ml-1">{m.desc}</span>
-                    </div>
-                  </div>
-                ))}
+              <h2 className="text-base font-bold mb-3">관절 리깅 시스템</h2>
+
+              {/* Body Parts */}
+              <div className="mb-3">
+                <h3 className="text-[11px] text-white/60 font-medium mb-2">지원 신체 부위</h3>
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(RIG_BODY_PART_LABELS).map(([key, label]) => (
+                    <span key={key} className="bg-white/5 rounded px-2 py-0.5 text-[10px] text-white/50">
+                      {label}
+                    </span>
+                  ))}
+                </div>
               </div>
-              <p className="text-[10px] text-white/30 mt-2">
-                AI가 이미지를 분석하여 적절한 모션을 자동 선택합니다
-              </p>
+
+              {/* Joint Motions */}
+              <div className="mb-3">
+                <h3 className="text-[11px] text-white/60 font-medium mb-2">관절 모션 타입</h3>
+                <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                  {Object.entries(RIG_JOINT_MOTION_LABELS).map(([key, label]) => (
+                    <div key={key} className="flex items-center gap-1.5 bg-white/5 rounded-md px-2 py-1">
+                      <span className="text-green-400 font-mono font-medium">{key}</span>
+                      <span className="text-white/40">{label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Phase Explanation */}
+              <div className="bg-green-500/5 border border-green-500/15 rounded-lg p-2.5 text-[10px] text-white/50">
+                <span className="text-green-400 font-medium">Phase(위상)</span>으로 관절이 연동됩니다.
+                좌우 대칭 부위는 180° 차이, 연결 부위는 30~90° 차이로 자연스러운 동작을 만듭니다.
+              </div>
             </div>
           </div>
 
@@ -376,7 +445,7 @@ export default function AnimatePage() {
           <div className="space-y-5">
             {/* Generate Button */}
             <div className="card-glass p-5">
-              <h2 className="text-base font-bold mb-3">2. AI 애니메이션 생성</h2>
+              <h2 className="text-base font-bold mb-3">2. AI 관절 리깅 생성</h2>
               <button
                 onClick={handleGenerate}
                 disabled={isGenerating || !geminiKey || images.length === 0}
@@ -384,15 +453,18 @@ export default function AnimatePage() {
               >
                 {isGenerating ? (
                   <span className="flex items-center justify-center gap-2">
-                    <span className="animate-spin">⚙️</span> AI가 캐릭터를 분석하고 있습니다...
+                    <span className="animate-spin">⚙️</span> AI가 캐릭터 관절을 분석하고 있습니다...
                   </span>
                 ) : (
-                  <span>🦴 Puppet Pin 애니메이션 생성</span>
+                  <span>🦴 캐릭터 리깅 애니메이션 생성</span>
                 )}
               </button>
               {images.length > 0 && (
                 <div className="mt-2 text-[10px] text-white/40 text-center">
-                  {images.length}개 이미지 × {animationDuration}초 = 총 {images.length * animationDuration}초 영상 (씬 간 crossfade 전환)
+                  {images.length}개 이미지 × {animationDuration}초 = 총 {images.length * animationDuration}초 영상
+                  {rigMode === "action" && actionPreset && (
+                    <span className="text-green-400/60 ml-1">({RIG_ACTION_LABELS[actionPreset]})</span>
+                  )}
                 </div>
               )}
             </div>
@@ -402,7 +474,7 @@ export default function AnimatePage() {
               <h2 className="text-base font-bold mb-3">3. 생성 결과</h2>
               <textarea
                 className="input-field w-full h-64 resize-none text-xs font-mono"
-                placeholder="AI가 생성한 Puppet Pin 애니메이션 JSON이 여기에 표시됩니다..."
+                placeholder="AI가 생성한 캐릭터 리깅 애니메이션 JSON이 여기에 표시됩니다..."
                 value={generatedJson}
                 onChange={(e) => setGeneratedJson(e.target.value)}
               />
@@ -430,23 +502,27 @@ export default function AnimatePage() {
                 </div>
                 <div className="flex items-start gap-2">
                   <span className="text-green-400 font-bold">2.</span>
-                  <span>&quot;Puppet Pin 애니메이션 생성&quot; 클릭</span>
+                  <span>리깅 모드 선택 (간단/고급/액션)</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <span className="text-green-400 font-bold">3.</span>
-                  <span>ZIP 다운로드 → 압축 해제</span>
+                  <span>&quot;캐릭터 리깅 애니메이션 생성&quot; 클릭</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <span className="text-green-400 font-bold">4.</span>
-                  <span>After Effects → 파일 → 스크립트 실행 → JSX 선택</span>
+                  <span>ZIP 다운로드 → 압축 해제</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <span className="text-green-400 font-bold">5.</span>
-                  <span>JSON 선택 → 캐릭터가 자동으로 움직입니다!</span>
+                  <span>After Effects → 파일 → 스크립트 실행 → JSX 선택</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-green-400 font-bold">6.</span>
+                  <span>JSON 선택 → 관절이 리깅된 캐릭터가 자동으로 움직입니다!</span>
                 </div>
               </div>
               <div className="mt-3 bg-green-500/10 border border-green-500/20 rounded-lg p-2.5 text-[10px] text-green-400/80">
-                배경 투명 PNG 권장 | 미세한 움직임 (2~15px) | 과한 동작은 이미지 왜곡 가능
+                배경 투명 PNG 권장 | 관절별 독립 모션 | phase(위상)으로 자연스러운 연동 | 최대 8개 CC Bend It 스태킹
               </div>
             </div>
           </div>
