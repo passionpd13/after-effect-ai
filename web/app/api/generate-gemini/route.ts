@@ -25,21 +25,19 @@ JSX가 joints를 분석하여 자동 적용합니다:
 
 | 신체 부위 | part 값 | 추천 motion | amount | speed | 설명 |
 |-----------|---------|------------|--------|-------|------|
-| 머리 | head | nod | 2~4 | 0.3~0.5 | 미세한 끄덕임. 대화 시 약간 더 |
-| 몸통 | torso | breathe | 1~3 | 0.25~0.4 | 호흡. 매우 느리고 미세하게 |
-| 팔 | left_arm/right_arm | swing | 3~6 | 0.3~0.5 | CC Bend It 미세 흔들림 |
-| 손 | left_hand/right_hand | wave | 2~5 | 0.4~0.6 | 손목 미세 움직임 |
-| 꼬리 | tail | wave | 3~8 | 0.4~0.7 | 물결. 가장 활발한 부위 |
-| 소품/나무/표지판 | accessory | wave | 1~3 | 0.2~0.4 | 바람에 미세하게 |
+| 머리 | head | nod | 8~12 | 0.4~0.6 | 끄덕임. CC Bend It 도 단위 |
+| 몸통 | torso | breathe | 5~8 | 0.3~0.4 | 호흡. 느리고 부드럽게 |
+| 팔 | left_arm/right_arm | swing | 10~18 | 0.4~0.6 | 팔 흔들림 |
+| 꼬리 | tail | wave | 15~25 | 0.5~0.8 | 물결. 가장 활발한 부위 |
+| 소품/나무 | accessory | wave | 5~10 | 0.3~0.5 | 바람에 흔들림 |
 
-=== amount 가이드 (매우 중요!) ===
-★ amount는 작을수록 자연스럽습니다! 항상 최소값에 가깝게 설정하세요!
-- 호흡(breathe): 1~3 (거의 안 보일 정도)
-- 끄덕임(nod): 2~4 (고개가 살짝 움직이는 정도)
-- 팔 흔들림(swing): 3~6 (팔이 미세하게 흔들리는 정도)
-- 꼬리/머리카락(wave): 3~8 (가장 눈에 띄어도 되는 부위)
-- 떨림(shake): 2~4 (전체 이미지가 왜곡되면 안 됨)
-- 과한 amount = 이미지 왜곡 = 부자연스러움!
+=== amount 가이드 (CC Bend It 도 단위!) ===
+★ CC Bend It의 amount는 도(degree) 단위! 5 이하는 눈에 안 보입니다!
+- 호흡(breathe): 5~8도
+- 끄덕임(nod): 8~12도
+- 팔 흔들림(swing): 10~18도
+- 꼬리/머리카락(wave): 15~25도 (가장 활발한 부위)
+- 떨림(shake): 5~10도
 
 === speed 가이드 ===
 ★ 느릴수록 자연스럽습니다!
@@ -54,8 +52,8 @@ JSX가 joints를 분석하여 자동 적용합니다:
 - 꼬리: 30~60° 씩 증가 (파동)
 
 === 값 범위 (매우 중요!) ===
-joint.amount: 1 ~ 8 (★ 대부분 2~5가 적절! 8 초과 절대 금지!)
-joint.speed: 0.2 ~ 0.8 (★ 대부분 0.3~0.5가 적절!)
+joint.amount: 5 ~ 25 (CC Bend It 도 단위. 머리/팔: 8~15, 꼬리: 15~25, 호흡: 5~8)
+joint.speed: 0.3 ~ 1.0 (반복 속도. 호흡: 0.3~0.4, 팔: 0.5~0.7, 꼬리: 0.6~0.8)
 joint.phase: 0 ~ 360 (위상 오프셋)
 ★ wiggle_elements, expression_links, bend_zones는 사용하지 마세요! joints만 사용!
 
@@ -92,11 +90,11 @@ joint.phase: 0 ~ 360 (위상 오프셋)
           "image_source": { "file": "실제파일명.확장자", "fit_mode": "cover" },
           "transform": { "position": {"x": 960, "y": 540}, "scale": [100, 100], "opacity": 100 },
           "joints": [
-            { "name": "head", "part": "head", "x": 540, "y": 120, "motion": "nod", "amount": 3, "speed": 0.35, "phase": 90 },
-            { "name": "body", "part": "torso", "x": 540, "y": 350, "motion": "breathe", "amount": 2, "speed": 0.3, "phase": 0 },
-            { "name": "right_arm", "part": "right_arm", "x": 700, "y": 300, "motion": "swing", "amount": 4, "speed": 0.4, "phase": 0 },
-            { "name": "left_arm", "part": "left_arm", "x": 380, "y": 300, "motion": "swing", "amount": 4, "speed": 0.4, "phase": 180 },
-            { "name": "tail", "part": "tail", "x": 350, "y": 500, "motion": "wave", "amount": 5, "speed": 0.5, "phase": 0 }
+            { "name": "head", "part": "head", "x": 540, "y": 120, "motion": "nod", "amount": 10, "speed": 0.5, "phase": 90 },
+            { "name": "body", "part": "torso", "x": 540, "y": 350, "motion": "breathe", "amount": 6, "speed": 0.35, "phase": 0 },
+            { "name": "right_arm", "part": "right_arm", "x": 700, "y": 300, "motion": "swing", "amount": 12, "speed": 0.5, "phase": 0 },
+            { "name": "left_arm", "part": "left_arm", "x": 380, "y": 300, "motion": "swing", "amount": 12, "speed": 0.5, "phase": 180 },
+            { "name": "tail", "part": "tail", "x": 350, "y": 500, "motion": "wave", "amount": 18, "speed": 0.6, "phase": 0 }
           ],
           "fixed_pins": [
             { "name": "feet_left", "x": 480, "y": 700 },
@@ -546,7 +544,7 @@ ${fileList}
 3. **entrance, animation, exit 사용 금지!** 넣지 마세요
 4. joints 배열에 캐릭터 핵심 부위만 3~5개 (머리, 팔, 꼬리 등)
 5. x, y는 컴포지션 좌표 (가로: 0~${fmt.w}, 0~${fmt.h})
-6. amount 2~5, speed 0.3~0.5 (매우 미세하게!)
+6. amount 8~20 (CC Bend It 도 단위! 5 이하는 안 보임!), speed 0.4~0.7
 7. fixed_pins로 바닥 고정
 8. settings: width=${fmt.w}, height=${fmt.h}, fps=${fpsVal}, total_duration=${dur}
 9. transition_to_next: crossfade (duration 0.5)

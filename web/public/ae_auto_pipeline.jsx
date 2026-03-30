@@ -1512,64 +1512,54 @@ function processV2(comp, data, projectFolder) {
 
                     var joints = layerDef.joints || layerDef.pins || [];
                     var bendIdx = 0;
-                    var maxBends = 6; // CC Bend It 최대 개수
+                    var maxBends = 6;
 
                     for (var ji = 0; ji < joints.length && bendIdx < maxBends; ji++) {
                         try {
                             var jDef = joints[ji];
                             var jMotion = jDef.motion || "breathe";
-                            var jAmount = Math.min(Number(jDef.amount) || 3, 8); // 최대 8도로 제한
-                            var jSpeed = Math.min(Number(jDef.speed) || 0.4, 1.0); // 최대 속도 1.0
+                            var jAmount = Math.min(Number(jDef.amount) || 5, 30); // ★ 최대 30도 (CC Bend It은 도 단위, 8도는 안 보임)
+                            var jSpeed = Math.min(Number(jDef.speed) || 0.5, 2.0); // ★ 최대 속도 2.0
                             var jPhase = (Number(jDef.phase) || 0) * Math.PI / 180;
                             var jPart = jDef.part || jDef.name || "body";
                             var jx = Number(jDef.x) || (comp.width / 2);
                             var jy = Number(jDef.y) || (comp.height / 2);
 
-                            // CC Bend It 이펙트 생성
                             var bendEff = aeLayer.property("Effects").addProperty("CC Bend It");
                             bendEff.name = "J_" + (jDef.name || jPart || bendIdx);
 
-                            // 파트별 벤드 방향/길이 자동 결정
-                            var bendLen = 50 * scaleFactor;
+                            var bendLen = 80 * scaleFactor; // ★ 50→80 벤드 영역 확대
                             var isHead = (jPart.indexOf("head") >= 0);
                             var isArm = (jPart.indexOf("arm") >= 0 || jPart.indexOf("hand") >= 0);
                             var isTail = (jPart.indexOf("tail") >= 0 || jPart.indexOf("cape") >= 0 || jPart.indexOf("hair") >= 0);
-                            var isTorso = (jPart.indexOf("torso") >= 0 || jPart.indexOf("body") >= 0);
                             var isLeg = (jPart.indexOf("leg") >= 0);
 
-                            // Start/End 포인트 설정 (벤드 축 방향)
                             if (isArm || isLeg) {
-                                // 팔/다리: 수평 축 벤드
                                 bendEff.property("Start").setValue([jx - bendLen, jy]);
                                 bendEff.property("End").setValue([jx + bendLen, jy]);
                             } else if (isTail) {
-                                // 꼬리/머리카락: 긴 수직 벤드
                                 bendEff.property("Start").setValue([jx, Math.max(0, jy - bendLen * 1.5)]);
                                 bendEff.property("End").setValue([jx, Math.min(comp.height, jy + bendLen * 1.5)]);
                             } else if (isHead) {
-                                // 머리: 짧은 수직 벤드
-                                bendEff.property("Start").setValue([jx, Math.max(0, jy - bendLen * 0.8)]);
-                                bendEff.property("End").setValue([jx, Math.min(comp.height, jy + bendLen * 0.8)]);
+                                bendEff.property("Start").setValue([jx, Math.max(0, jy - bendLen)]);
+                                bendEff.property("End").setValue([jx, jy + bendLen * 0.3]);
                             } else {
-                                // 몸통/기타: 수직 벤드
                                 bendEff.property("Start").setValue([jx, Math.max(0, jy - bendLen)]);
                                 bendEff.property("End").setValue([jx, Math.min(comp.height, jy + bendLen)]);
                             }
 
-                            // 모션별 벤드 진폭 조정
+                            // ★ 모션별 벤드 진폭 - 배율 제거, amount 그대로 사용
                             var bendAmt = jAmount;
-                            if (jMotion === "breathe") bendAmt = jAmount * 0.5; // 호흡은 매우 미세
-                            else if (jMotion === "nod") bendAmt = jAmount * 0.7; // 끄덕임도 미세
-                            else if (jMotion === "shake") bendAmt = jAmount * 0.4; // 떨림은 빠르지만 작게
+                            if (jMotion === "breathe") bendAmt = Math.max(jAmount, 5); // 최소 5도
+                            else if (jMotion === "nod") bendAmt = Math.max(jAmount, 8); // 최소 8도
+                            else if (jMotion === "swing" || jMotion === "wave") bendAmt = Math.max(jAmount, 10); // 최소 10도
+                            else if (jMotion === "shake") bendAmt = Math.max(jAmount, 5);
 
-                            // 모션별 Expression
                             if (jMotion === "shake") {
-                                // 떨림: 불규칙한 wiggle
-                                var skFreq = Math.min(jSpeed * 5, 6);
+                                var skFreq = Math.max(jSpeed * 5, 3);
                                 bendEff.property("Bend").expression =
                                     "wiggle(" + skFreq + ", " + bendAmt + ")";
                             } else {
-                                // 기본: 부드러운 사인파
                                 bendEff.property("Bend").expression =
                                     "var amt = " + bendAmt + ";\n" +
                                     "var spd = " + jSpeed + ";\n" +
@@ -1606,15 +1596,24 @@ function processV2(comp, data, projectFolder) {
                         }
                     }
 
-                    // 관절이 전혀 없으면 기본 미세 호흡 벤드 1개 추가
+                    // 관절이 전혀 없으면 기본 벤드 3개 추가 (머리/몸통/팔)
                     if (bendIdx === 0) {
                         try {
-                            var defBend = aeLayer.property("Effects").addProperty("CC Bend It");
-                            defBend.name = "Default_Breathe";
-                            defBend.property("Start").setValue([comp.width / 2, comp.height * 0.3]);
-                            defBend.property("End").setValue([comp.width / 2, comp.height * 0.7]);
-                            defBend.property("Bend").expression = "Math.sin(time * 0.3 * Math.PI * 2) * 1.5";
-                            log.push("    기본 호흡 벤드 적용 (관절 미지정)");
+                            // 머리 끄덕임
+                            var defHead = aeLayer.property("Effects").addProperty("CC Bend It");
+                            defHead.name = "Default_Head";
+                            defHead.property("Start").setValue([comp.width / 2, comp.height * 0.1]);
+                            defHead.property("End").setValue([comp.width / 2, comp.height * 0.35]);
+                            defHead.property("Bend").expression = "Math.sin(time * 0.5 * Math.PI * 2) * 8";
+
+                            // 몸통 호흡
+                            var defBody = aeLayer.property("Effects").addProperty("CC Bend It");
+                            defBody.name = "Default_Body";
+                            defBody.property("Start").setValue([comp.width / 2, comp.height * 0.3]);
+                            defBody.property("End").setValue([comp.width / 2, comp.height * 0.7]);
+                            defBody.property("Bend").expression = "Math.sin(time * 0.3 * Math.PI * 2) * 5";
+
+                            log.push("    기본 벤드 적용 (관절 미지정): 머리+몸통");
                         } catch (defErr) {}
                     }
 
