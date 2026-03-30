@@ -1255,7 +1255,8 @@ function processV2(comp, data, projectFolder) {
               }
             }
 
-            // --- Puppet Pin 캐릭터 레이어 (CC Bend It + Transform 키프레임 방식) ---
+            // --- 캐릭터 애니메이션 레이어 (CC Bend It + 미세 Wiggle) ---
+            // 이미지를 화면에 꽉 차게 배치하고, CC Bend It으로 부분 변형만 적용
             if (layerDef.type === "puppet" && layerDef.image_source && layerDef.image_source.file) {
               try {
                 var puppetFileName = layerDef.image_source.file;
@@ -1274,181 +1275,113 @@ function processV2(comp, data, projectFolder) {
                     aeLayer.inPoint = currentTime;
                     aeLayer.outPoint = currentTime + sceneDur;
 
-                    // fit_mode 적용
-                    var pFitMode = layerDef.image_source.fit_mode || "contain";
+                    // 이미지를 화면에 꽉 차게 (cover) - 중앙 배치
                     var pSrcW = puppetFootage.width;
                     var pSrcH = puppetFootage.height;
                     var pBaseScale = 100;
                     if (pSrcW > 0 && pSrcH > 0) {
-                        if (pFitMode === "cover") {
-                            pBaseScale = Math.max(comp.width / pSrcW, comp.height / pSrcH) * 100;
-                        } else {
-                            pBaseScale = Math.min(comp.width / pSrcW, comp.height / pSrcH) * 100;
-                        }
+                        // 항상 cover: 화면을 완전히 채우도록
+                        pBaseScale = Math.max(comp.width / pSrcW, comp.height / pSrcH) * 100;
                         aeLayer.property("Scale").setValue([pBaseScale, pBaseScale]);
                     }
+                    // 중앙 배치
+                    aeLayer.property("Position").setValue([comp.width / 2, comp.height / 2]);
 
-                    // === 핀 분석: 모션별 분류 ===
-                    var hasBreath = false;
-                    var hasNod = false;
-                    var hasSway = false;
-                    var bendPins = [];
-
+                    // === CC Bend It 효과만 적용 (부분 변형) ===
+                    // 핀 정보에서 CC Bend It 효과 생성 (최대 4개)
+                    var bendCount = 0;
                     if (layerDef.pins && layerDef.pins.length > 0) {
-                        for (var pi = 0; pi < layerDef.pins.length; pi++) {
+                        var scaleFactor = pBaseScale / 100;
+                        // 이미지 중앙 기준 오프셋
+                        var imgCenterX = comp.width / 2;
+                        var imgCenterY = comp.height / 2;
+
+                        for (var pi = 0; pi < layerDef.pins.length && bendCount < 4; pi++) {
                             var pinDef = layerDef.pins[pi];
                             var pMotion = pinDef.motion || "breathe";
-                            var pAmount = Number(pinDef.amount) || 5;
+                            var pAmount = Math.min(Number(pinDef.amount) || 5, 8); // 최대 8도로 제한
                             var pSpeed = Number(pinDef.speed) || 0.8;
 
-                            if (pMotion === "breathe") hasBreath = { amount: pAmount, speed: pSpeed };
-                            else if (pMotion === "nod") hasNod = { amount: pAmount, speed: pSpeed };
-                            else if (pMotion === "swing" || pMotion === "sway") hasSway = { amount: pAmount, speed: pSpeed };
-
-                            // bend, wave, swing → CC Bend It로 처리
-                            if (pMotion === "bend" || pMotion === "wave" || pMotion === "swing" || pMotion === "shake") {
-                                bendPins.push(pinDef);
+                            // breathe는 CC Bend It 사용하지 않음 (위글로 처리)
+                            if (pMotion === "breathe") {
+                                log.push("    핀: " + (pinDef.name || pi) + " (breathe → wiggle)");
+                                continue;
                             }
-
-                            log.push("    핀: " + (pinDef.name || pi) + " (" + pMotion + ", " + pAmount + "px)");
-                        }
-                    }
-
-                    // === 1. 호흡 애니메이션 (Scale 키프레임) ===
-                    if (hasBreath) {
-                        try {
-                            var bAmt = hasBreath.amount * 0.15; // px → scale% 변환 (미세하게)
-                            var bSpd = hasBreath.speed;
-                            var bCycleDur = 1.0 / bSpd;
-                            var bCycles = Math.ceil(sceneDur / bCycleDur);
-                            var scaleProp = aeLayer.property("Scale");
-
-                            for (var bc = 0; bc <= bCycles * 2; bc++) {
-                                var bt = currentTime + (bc * bCycleDur / 2);
-                                if (bt > currentTime + sceneDur) break;
-                                var sOff = (bc % 2 === 0) ? 0 : bAmt;
-                                scaleProp.setValueAtTime(bt, [pBaseScale + sOff, pBaseScale + sOff * 1.2]);
-                            }
-                            log.push("    호흡: scale ±" + bAmt.toFixed(1) + "%");
-                        } catch (breathErr) {
-                            errorLog.push("씬 " + (si+1) + " breathe: " + breathErr.toString());
-                        }
-                    }
-
-                    // === 2. 끄덕임/흔들림 (Rotation 키프레임) ===
-                    if (hasNod) {
-                        try {
-                            var nAmt = hasNod.amount * 0.3; // px → degree 변환
-                            var nSpd = hasNod.speed;
-                            var nCycleDur = 1.0 / nSpd;
-                            var nCycles = Math.ceil(sceneDur / nCycleDur);
-                            var rotProp = aeLayer.property("Rotation");
-
-                            for (var nc = 0; nc <= nCycles * 4; nc++) {
-                                var nt = currentTime + (nc * nCycleDur / 4);
-                                if (nt > currentTime + sceneDur) break;
-                                var nPhase = nc % 4;
-                                var rOff = (nPhase === 1) ? nAmt : (nPhase === 3) ? -nAmt : 0;
-                                rotProp.setValueAtTime(nt, rOff);
-                            }
-                            log.push("    끄덕임: rotation ±" + nAmt.toFixed(1) + "°");
-                        } catch (nodErr) {
-                            errorLog.push("씬 " + (si+1) + " nod: " + nodErr.toString());
-                        }
-                    }
-
-                    // === 3. 좌우 흔들림 (Position X 키프레임) ===
-                    if (hasSway) {
-                        try {
-                            var swAmt = hasSway.amount;
-                            var swSpd = hasSway.speed;
-                            var swCycleDur = 1.0 / swSpd;
-                            var swCycles = Math.ceil(sceneDur / swCycleDur);
-                            var posProp = aeLayer.property("Position");
-                            var basePos = posProp.value;
-
-                            for (var sc2 = 0; sc2 <= swCycles * 4; sc2++) {
-                                var st2 = currentTime + (sc2 * swCycleDur / 4);
-                                if (st2 > currentTime + sceneDur) break;
-                                var sPhase = sc2 % 4;
-                                var xOff = (sPhase === 1) ? swAmt : (sPhase === 3) ? -swAmt : 0;
-                                posProp.setValueAtTime(st2, [basePos[0] + xOff, basePos[1]]);
-                            }
-                            log.push("    흔들림: position ±" + swAmt + "px");
-                        } catch (swayErr) {
-                            errorLog.push("씬 " + (si+1) + " sway: " + swayErr.toString());
-                        }
-                    }
-
-                    // === 4. CC Bend It 효과 (핀 위치 기반 구부림) ===
-                    for (var bi = 0; bi < bendPins.length && bi < 3; bi++) {
-                        try {
-                            var bPin = bendPins[bi];
-                            var bendEffect = aeLayer.property("Effects").addProperty("CC Bend It");
-                            bendEffect.name = "Bend_" + (bPin.name || bi);
-
-                            var bx = Number(bPin.x) || (comp.width / 2);
-                            var by = Number(bPin.y) || (comp.height / 2);
-                            var bAmt2 = Number(bPin.amount) || 10;
-                            var bSpd2 = Number(bPin.speed) || 0.8;
-
-                            // 핀 위치를 컴포지션 좌표로 변환 (이미지가 contain 스케일된 상태)
-                            var scaleFactor = pBaseScale / 100;
-                            var imgOffX = (comp.width - pSrcW * scaleFactor) / 2;
-                            var imgOffY = (comp.height - pSrcH * scaleFactor) / 2;
-                            var compX = imgOffX + bx * scaleFactor;
-                            var compY = imgOffY + by * scaleFactor;
-
-                            bendEffect.property("Start").setValue([compX, Math.max(0, compY - 80 * scaleFactor)]);
-                            bendEffect.property("End").setValue([compX, Math.min(comp.height, compY + 80 * scaleFactor)]);
-
-                            // 구부림 키프레임 애니메이션
-                            var bendProp = bendEffect.property("Bend");
-                            var bCycleDur2 = 1.0 / bSpd2;
-                            var bCycles2 = Math.ceil(sceneDur / bCycleDur2);
-                            for (var bci = 0; bci <= bCycles2 * 4; bci++) {
-                                var bct = currentTime + (bci * bCycleDur2 / 4);
-                                if (bct > currentTime + sceneDur) break;
-                                var bPhase = bci % 4;
-                                var bVal = (bPhase === 1) ? bAmt2 : (bPhase === 3) ? -bAmt2 : 0;
-                                bendProp.setValueAtTime(bct, bVal);
-                            }
-                            log.push("    벤드: " + (bPin.name || bi) + " (" + bAmt2 + "°, " + bPin.motion + ")");
-                        } catch (bendErr) {
-                            errorLog.push("씬 " + (si+1) + " CC Bend: " + bendErr.toString());
-                        }
-                    }
-
-                    // === 5. Wiggle Expression (자연스러운 미세 떨림) ===
-                    if (layerDef.wiggle_elements && layerDef.wiggle_elements.length > 0) {
-                        for (var wi = 0; wi < layerDef.wiggle_elements.length; wi++) {
-                            var wig = layerDef.wiggle_elements[wi];
-                            var wigFreq = Number(wig.frequency) || 2;
-                            var wigAmt = Number(wig.amount) || 2;
-                            var wigProp = wig.property || "position";
 
                             try {
-                                if (wigProp === "rotation") {
-                                    aeLayer.property("Rotation").expression = "wiggle(" + wigFreq + ", " + wigAmt + ")";
-                                } else if (wigProp === "position") {
-                                    aeLayer.property("Position").expression = "wiggle(" + wigFreq + ", " + wigAmt + ")";
-                                } else if (wigProp === "scale") {
-                                    aeLayer.property("Scale").expression = "s=wiggle(" + wigFreq + ", " + wigAmt + ");[s[0],s[1]]";
-                                } else if (wigProp === "opacity") {
-                                    aeLayer.property("Opacity").expression = "wiggle(" + wigFreq + ", " + wigAmt + ")";
+                                var bendEffect = aeLayer.property("Effects").addProperty("CC Bend It");
+                                bendEffect.name = (pinDef.name || ("bend_" + pi));
+
+                                // 핀의 이미지 좌표를 컴포지션 좌표로 변환
+                                var pinImgX = Number(pinDef.x) || (pSrcW / 2);
+                                var pinImgY = Number(pinDef.y) || (pSrcH / 2);
+                                // 이미지 좌측상단은 comp 중앙 - 이미지절반크기
+                                var imgLeft = imgCenterX - (pSrcW * scaleFactor / 2);
+                                var imgTop = imgCenterY - (pSrcH * scaleFactor / 2);
+                                var compPinX = imgLeft + pinImgX * scaleFactor;
+                                var compPinY = imgTop + pinImgY * scaleFactor;
+
+                                // Bend Start/End: 핀 위치 기준 위아래 범위
+                                var bendRange = 60 * scaleFactor;
+                                bendEffect.property("Start").setValue([compPinX, Math.max(0, compPinY - bendRange)]);
+                                bendEffect.property("End").setValue([compPinX, Math.min(comp.height, compPinY + bendRange)]);
+
+                                // 구부림 키프레임 (부드러운 사인파)
+                                var bendProp = bendEffect.property("Bend");
+                                var bCycleDur = 1.0 / pSpeed;
+                                var bCycles = Math.ceil(sceneDur / bCycleDur);
+                                for (var bci = 0; bci <= bCycles * 4; bci++) {
+                                    var bct = currentTime + (bci * bCycleDur / 4);
+                                    if (bct > currentTime + sceneDur) break;
+                                    var bPhase = bci % 4;
+                                    var bVal = (bPhase === 1) ? pAmount : (bPhase === 3) ? -pAmount : 0;
+                                    bendProp.setValueAtTime(bct, bVal);
                                 }
-                                log.push("    위글: " + wigProp + " (freq:" + wigFreq + ", amt:" + wigAmt + ")");
-                            } catch (wigErr) {
-                                errorLog.push("씬 " + (si+1) + " wiggle: " + wigErr.toString());
+
+                                bendCount++;
+                                log.push("    벤드: " + (pinDef.name || pi) + " (" + pMotion + ", ±" + pAmount + "°)");
+                            } catch (bendErr) {
+                                errorLog.push("씬 " + (si+1) + " CC Bend: " + bendErr.toString());
                             }
                         }
-                    } else {
-                        // 기본 미세 위글 (항상 적용)
-                        try {
-                            aeLayer.property("Rotation").expression = "wiggle(1.5, 0.5)";
-                            aeLayer.property("Position").expression = "wiggle(1, 2)";
-                            log.push("    기본 위글 적용");
-                        } catch (defWigErr) {}
+                    }
+
+                    // === 미세한 Wiggle Expression (자연스러운 생동감) ===
+                    // Position: 아주 미세한 떨림 (1~3px)
+                    // Rotation: 아주 미세한 흔들림 (0.3~0.8도)
+                    // Scale: 호흡 느낌의 미세 확대축소
+                    try {
+                        var wigPosAmt = 3;
+                        var wigRotAmt = 0.5;
+                        var wigScaleAmt = 0.3;
+                        var wigFreq = 1.5;
+
+                        if (layerDef.wiggle_elements && layerDef.wiggle_elements.length > 0) {
+                            for (var wi = 0; wi < layerDef.wiggle_elements.length; wi++) {
+                                var wig = layerDef.wiggle_elements[wi];
+                                var wFreq = Number(wig.frequency) || 1.5;
+                                var wAmt = Number(wig.amount) || 2;
+                                if (wig.property === "position") { wigPosAmt = Math.min(wAmt, 5); wigFreq = wFreq; }
+                                else if (wig.property === "rotation") { wigRotAmt = Math.min(wAmt, 1.5); }
+                                else if (wig.property === "scale") { wigScaleAmt = Math.min(wAmt, 1); }
+                            }
+                        }
+
+                        // Position 위글 (미세 떨림)
+                        aeLayer.property("Position").expression =
+                            "var p = value; p + wiggle(" + wigFreq + ", " + wigPosAmt + ") - value;";
+
+                        // Rotation 위글 (미세 흔들림)
+                        aeLayer.property("Rotation").expression =
+                            "wiggle(" + wigFreq + ", " + wigRotAmt + ")";
+
+                        // Scale 위글 (호흡 느낌)
+                        aeLayer.property("Scale").expression =
+                            "var s = value; var w = wiggle(0.8, " + wigScaleAmt + "); [s[0]+w[0]-value[0], s[1]+w[1]-value[1]];";
+
+                        log.push("    위글: pos±" + wigPosAmt + "px, rot±" + wigRotAmt + "°, scale±" + wigScaleAmt + "%");
+                    } catch (wigErr) {
+                        errorLog.push("씬 " + (si+1) + " wiggle: " + wigErr.toString());
                     }
 
                     log.push("  → 캐릭터 애니메이션 성공!");
