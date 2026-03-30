@@ -1575,8 +1575,11 @@ function processV2(comp, data, projectFolder) {
                 }
             }
 
-            // --- Entrance 애니메이션 ---
-            if (aeLayer && layerDef.entrance && layerDef.entrance.type !== "none") {
+            // --- Entrance 애니메이션 (puppet 타입은 스킵 → 즉시 표시) ---
+            if (aeLayer && layerDef.type === "puppet") {
+                // puppet 레이어는 fade_in 없이 즉시 표시 (opacity 100 고정)
+                // fade_in 키프레임이 이미지를 숨길 수 있으므로 완전히 건너뜀
+            } else if (aeLayer && layerDef.entrance && layerDef.entrance.type !== "none") {
                 var ent = layerDef.entrance;
                 var entDelay = ent.delay || 0;
                 var entDur = ent.duration || 0.8;
