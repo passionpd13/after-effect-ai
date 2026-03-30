@@ -9,6 +9,7 @@ interface UploadedImage {
   cutoutDataUrl?: string;
   cutoutName?: string;
   isProcessing?: boolean;
+  imageType: "source" | "background";
 }
 
 type Mode = "manual" | "auto";
@@ -224,6 +225,7 @@ export default function AiModePage() {
               file,
               dataUrl: e.target?.result as string,
               name: safeName,  // AE 호환 영문 파일명
+              imageType: "source",
             });
           };
           reader.readAsDataURL(file);
@@ -235,6 +237,16 @@ export default function AiModePage() {
 
   const removeImage = (index: number) => {
     setImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const toggleImageType = (index: number) => {
+    setImages((prev) =>
+      prev.map((img, i) =>
+        i === index
+          ? { ...img, imageType: img.imageType === "source" ? "background" : "source" }
+          : img
+      )
+    );
   };
 
   // ── 배경 제거 (remove.bg API) ──
@@ -291,11 +303,11 @@ export default function AiModePage() {
     setError("");
 
     // 모든 이미지 (원본 + 컷아웃) 수집
-    const allImages: { name: string; data_url: string; is_cutout?: boolean }[] = [];
+    const allImages: { name: string; data_url: string; is_cutout?: boolean; image_type?: string }[] = [];
     for (const img of images) {
-      allImages.push({ name: img.name, data_url: img.dataUrl });
+      allImages.push({ name: img.name, data_url: img.dataUrl, image_type: img.imageType });
       if (img.cutoutDataUrl && img.cutoutName) {
-        allImages.push({ name: img.cutoutName, data_url: img.cutoutDataUrl, is_cutout: true });
+        allImages.push({ name: img.cutoutName, data_url: img.cutoutDataUrl, is_cutout: true, image_type: img.imageType });
       }
     }
 
@@ -336,12 +348,18 @@ export default function AiModePage() {
     const hasCutoutsAvailable = images.some((img) => img.cutoutName);
 
     const imageList = images.map((img, i) => {
-      let line = `${i + 1}. ${img.name}`;
+      const typeTag = img.imageType === "background" ? " [배경용]" : "";
+      let line = `${i + 1}. ${img.name}${typeTag}`;
       if (img.cutoutName && img.cutoutDataUrl) {
         line += `\n   ${img.cutoutName} (배경 제거됨)`;
       }
       return line;
     }).join("\n");
+
+    const bgImages = images.filter((img) => img.imageType === "background");
+    const bgNote = bgImages.length > 0
+      ? `\n\n## 배경 이미지 규칙\n배경으로 지정된 이미지(${bgImages.map((img) => img.name).join(", ")})는:\n- layers 배열의 마지막 항목으로 배치\n- z_position: -2000\n- effects(blur, vignette 등) 금지\n- opacity: 100`
+      : "";
 
     const formatMap: Record<string, string> = {
       vertical: "세로형 (1080x1920)",
@@ -360,7 +378,7 @@ ${description ? `- 설명: ${description}` : "- 이미지를 분석해서 내용
 
 ## 사용 가능한 이미지 파일 (이 파일명만 사용!)
 ${imageList}
-${hasCutoutsAvailable ? "※ _cutout.png 파일은 배경 제거된 객체입니다" : ""}
+${hasCutoutsAvailable ? "※ _cutout.png 파일은 배경 제거된 객체입니다" : ""}${bgNote}
 
 ## 핵심: 모든 이미지를 하나의 영상에서 다양하게 연출!
 
@@ -655,6 +673,16 @@ JSON만 출력해주세요.`;
                           <span className="text-[10px] text-yellow-400 animate-pulse">처리 중...</span>
                         ) : null}
                       </div>
+                      <button
+                        onClick={() => toggleImageType(i)}
+                        className={`text-[10px] font-medium px-2 py-1 rounded-md transition-all flex-shrink-0 ${
+                          img.imageType === "background"
+                            ? "bg-blue-500/20 border border-blue-500/50 text-blue-400"
+                            : "bg-white/10 border border-white/20 text-white/50 hover:border-white/40"
+                        }`}
+                      >
+                        {img.imageType === "background" ? "배경" : "소스"}
+                      </button>
                       <button onClick={() => removeImage(i)} className="text-red-400/60 hover:text-red-400 text-xs px-2">✕</button>
                     </div>
                   ))}
