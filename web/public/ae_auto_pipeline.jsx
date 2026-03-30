@@ -1200,6 +1200,209 @@ function processV2(comp, data, projectFolder) {
               }
             }
 
+            // --- Puppet Pin 캐릭터 레이어 ---
+            if (layerDef.type === "puppet" && layerDef.image_source && layerDef.image_source.file) {
+              try {
+                var puppetFileName = layerDef.image_source.file;
+                var puppetPath = new File(projectFolder + "/" + puppetFileName);
+                log.push("  퍼펫: " + puppetFileName);
+
+                if (!puppetPath.exists) {
+                    errorLog.push("씬 " + (si+1) + " puppet '" + (layerDef.name || layerDef.id) + "': 파일 없음 → " + puppetPath.fsName);
+                } else {
+                    var puppetImport = new ImportOptions(puppetPath);
+                    var puppetFootage = app.project.importFile(puppetImport);
+                    aeLayer = comp.layers.add(puppetFootage);
+                    aeLayer.name = layerDef.name || layerDef.id || ("Puppet_" + si + "_" + li);
+                    aeLayer.startTime = currentTime;
+                    aeLayer.inPoint = currentTime;
+                    aeLayer.outPoint = currentTime + sceneDur;
+
+                    // fit_mode 적용
+                    var pFitMode = layerDef.image_source.fit_mode || "contain";
+                    var pSrcW = puppetFootage.width;
+                    var pSrcH = puppetFootage.height;
+                    if (pSrcW > 0 && pSrcH > 0) {
+                        var pScale;
+                        if (pFitMode === "cover") {
+                            pScale = Math.max(comp.width / pSrcW, comp.height / pSrcH) * 100;
+                        } else {
+                            pScale = Math.min(comp.width / pSrcW, comp.height / pSrcH) * 100;
+                        }
+                        aeLayer.property("Scale").setValue([pScale, pScale]);
+                    }
+
+                    // Puppet Effect 추가
+                    var puppetEffect = aeLayer.property("Effects").addProperty("Puppet");
+
+                    // Advanced Engine 사용 시도 (AE CC 이상)
+                    try {
+                        var puppetEngine = puppetEffect.property("Puppet Engine");
+                        // Mesh 1 접근
+                        var meshGroup = puppetEngine.property("Mesh 1");
+                        var deformGroup = meshGroup.property("Deform");
+
+                        // 움직이는 핀 추가
+                        if (layerDef.pins && layerDef.pins.length > 0) {
+                            for (var pi = 0; pi < layerDef.pins.length; pi++) {
+                                var pinDef = layerDef.pins[pi];
+                                var puppetPin = deformGroup.addProperty("Puppet Pin");
+                                var pinPos = puppetPin.property("Position");
+                                var px = Number(pinDef.x) || 0;
+                                var py = Number(pinDef.y) || 0;
+                                var pAmount = Number(pinDef.amount) || 5;
+                                var pSpeed = Number(pinDef.speed) || 0.8;
+                                var pMotion = pinDef.motion || "breathe";
+
+                                // 모션 프리셋별 키프레임 생성
+                                var cycleDur = 1.0 / pSpeed;
+                                var numCycles = Math.ceil(sceneDur / cycleDur);
+
+                                if (pMotion === "nod") {
+                                    // 상하 끄덕임
+                                    for (var ci = 0; ci <= numCycles * 4; ci++) {
+                                        var ct = currentTime + (ci * cycleDur / 4);
+                                        if (ct > currentTime + sceneDur) break;
+                                        var phase = ci % 4;
+                                        var yOff = (phase === 1) ? -pAmount : (phase === 3) ? pAmount : 0;
+                                        pinPos.setValueAtTime(ct, [px, py + yOff]);
+                                    }
+                                } else if (pMotion === "swing") {
+                                    // 좌우 진자 흔들림
+                                    for (var ci = 0; ci <= numCycles * 4; ci++) {
+                                        var ct = currentTime + (ci * cycleDur / 4);
+                                        if (ct > currentTime + sceneDur) break;
+                                        var phase = ci % 4;
+                                        var xOff = (phase === 1) ? pAmount : (phase === 3) ? -pAmount : 0;
+                                        pinPos.setValueAtTime(ct, [px + xOff, py]);
+                                    }
+                                } else if (pMotion === "wave") {
+                                    // 물결/바람 (사인파 연속)
+                                    var waveSteps = Math.floor(sceneDur * 10);
+                                    for (var ws = 0; ws <= waveSteps; ws++) {
+                                        var wt = currentTime + (ws * 0.1);
+                                        if (wt > currentTime + sceneDur) break;
+                                        var wOff = Math.sin(ws * 0.1 * pSpeed * Math.PI * 2) * pAmount;
+                                        pinPos.setValueAtTime(wt, [px + wOff, py]);
+                                    }
+                                } else if (pMotion === "breathe") {
+                                    // 호흡 (느린 상하)
+                                    for (var ci = 0; ci <= numCycles * 4; ci++) {
+                                        var ct = currentTime + (ci * cycleDur / 4);
+                                        if (ct > currentTime + sceneDur) break;
+                                        var phase = ci % 4;
+                                        var yOff = (phase === 1 || phase === 2) ? -pAmount : 0;
+                                        pinPos.setValueAtTime(ct, [px, py + yOff]);
+                                    }
+                                } else if (pMotion === "shake") {
+                                    // 빠른 떨림 (랜덤 느낌)
+                                    var shakeSteps = Math.floor(sceneDur * 8);
+                                    for (var ss = 0; ss <= shakeSteps; ss++) {
+                                        var st = currentTime + (ss * 0.125);
+                                        if (st > currentTime + sceneDur) break;
+                                        var sx = (ss % 2 === 0) ? pAmount : -pAmount;
+                                        var sy = (ss % 3 === 0) ? pAmount * 0.5 : -pAmount * 0.5;
+                                        pinPos.setValueAtTime(st, [px + sx, py + sy]);
+                                    }
+                                } else if (pMotion === "bob") {
+                                    // 위아래 반복 (바운스)
+                                    for (var ci = 0; ci <= numCycles * 2; ci++) {
+                                        var ct = currentTime + (ci * cycleDur / 2);
+                                        if (ct > currentTime + sceneDur) break;
+                                        var yOff = (ci % 2 === 0) ? 0 : -pAmount;
+                                        pinPos.setValueAtTime(ct, [px, py + yOff]);
+                                    }
+                                } else {
+                                    // 기본: 미세 호흡
+                                    pinPos.setValue([px, py]);
+                                }
+
+                                log.push("    핀: " + (pinDef.name || pi) + " (" + pMotion + ", " + pAmount + "px)");
+                            }
+                        }
+
+                        // 고정 핀 추가
+                        if (layerDef.fixed_pins && layerDef.fixed_pins.length > 0) {
+                            for (var fi = 0; fi < layerDef.fixed_pins.length; fi++) {
+                                var fPinDef = layerDef.fixed_pins[fi];
+                                var fixedPin = deformGroup.addProperty("Puppet Pin");
+                                fixedPin.property("Position").setValue([
+                                    Number(fPinDef.x) || 0,
+                                    Number(fPinDef.y) || 0
+                                ]);
+                                log.push("    고정핀: " + (fPinDef.name || fi));
+                            }
+                        }
+                    } catch (puppetEngineErr) {
+                        errorLog.push("씬 " + (si+1) + " puppet engine '" + (layerDef.name || layerDef.id) + "': " + puppetEngineErr.toString());
+                    }
+
+                    // Wiggle Expression 적용
+                    if (layerDef.wiggle_elements && layerDef.wiggle_elements.length > 0) {
+                        for (var wi = 0; wi < layerDef.wiggle_elements.length; wi++) {
+                            var wig = layerDef.wiggle_elements[wi];
+                            var wigFreq = Number(wig.frequency) || 2;
+                            var wigAmt = Number(wig.amount) || 2;
+                            var wigProp = wig.property || "position";
+
+                            try {
+                                if (wigProp === "rotation") {
+                                    aeLayer.property("Rotation").expression = "wiggle(" + wigFreq + ", " + wigAmt + ")";
+                                } else if (wigProp === "position") {
+                                    aeLayer.property("Position").expression = "wiggle(" + wigFreq + ", " + wigAmt + ")";
+                                } else if (wigProp === "scale") {
+                                    aeLayer.property("Scale").expression = "s=wiggle(" + wigFreq + ", " + wigAmt + ");[s[0],s[1]]";
+                                } else if (wigProp === "opacity") {
+                                    aeLayer.property("Opacity").expression = "wiggle(" + wigFreq + ", " + wigAmt + ")";
+                                }
+                                log.push("    위글: " + wigProp + " (freq:" + wigFreq + ", amt:" + wigAmt + ")");
+                            } catch (wigErr) {
+                                errorLog.push("씬 " + (si+1) + " wiggle: " + wigErr.toString());
+                            }
+                        }
+                    }
+
+                    // CC Bend It 적용 (bend 모션용)
+                    if (layerDef.pins) {
+                        for (var bi = 0; bi < layerDef.pins.length; bi++) {
+                            if (layerDef.pins[bi].motion === "bend") {
+                                try {
+                                    var bendEffect = aeLayer.property("Effects").addProperty("CC Bend It");
+                                    var bPin = layerDef.pins[bi];
+                                    var bx = Number(bPin.x) || 0;
+                                    var by = Number(bPin.y) || 0;
+                                    var bAmt = Number(bPin.amount) || 10;
+                                    var bSpd = Number(bPin.speed) || 0.8;
+
+                                    bendEffect.property("Start").setValue([bx, by - 50]);
+                                    bendEffect.property("End").setValue([bx, by + 50]);
+
+                                    var bendProp = bendEffect.property("Bend");
+                                    var bCycleDur = 1.0 / bSpd;
+                                    var bCycles = Math.ceil(sceneDur / bCycleDur);
+                                    for (var bci = 0; bci <= bCycles * 4; bci++) {
+                                        var bct = currentTime + (bci * bCycleDur / 4);
+                                        if (bct > currentTime + sceneDur) break;
+                                        var bPhase = bci % 4;
+                                        var bVal = (bPhase === 1) ? bAmt : (bPhase === 3) ? -bAmt : 0;
+                                        bendProp.setValueAtTime(bct, bVal);
+                                    }
+                                    log.push("    벤드: " + (bPin.name || bi) + " (" + bAmt + "deg)");
+                                } catch (bendErr) {
+                                    errorLog.push("씬 " + (si+1) + " CC Bend: " + bendErr.toString());
+                                }
+                            }
+                        }
+                    }
+
+                    log.push("  → 퍼펫 성공!");
+                    if (!firstImgLayer) firstImgLayer = aeLayer;
+                }
+              } catch (puppetErr) {
+                errorLog.push("씬 " + (si+1) + " puppet '" + (layerDef.name || layerDef.id) + "': " + puppetErr.toString());
+              }
+            }
+
             // --- 공통: Transform 적용 ---
             if (aeLayer && layerDef.transform) {
               try {

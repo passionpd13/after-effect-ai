@@ -9,7 +9,7 @@ interface UploadedImage {
   cutoutDataUrl?: string;
   cutoutName?: string;
   isProcessing?: boolean;
-  imageType: "source" | "background" | "storyboard";
+  imageType: "source" | "background" | "storyboard" | "character";
 }
 
 type Mode = "manual" | "auto";
@@ -240,10 +240,11 @@ export default function AiModePage() {
   };
 
   const toggleImageType = (index: number) => {
-    const cycle: Record<string, "source" | "background" | "storyboard"> = {
+    const cycle: Record<string, "source" | "background" | "storyboard" | "character"> = {
       source: "background",
       background: "storyboard",
-      storyboard: "source",
+      storyboard: "character",
+      character: "source",
     };
     setImages((prev) =>
       prev.map((img, i) =>
@@ -351,7 +352,7 @@ export default function AiModePage() {
     const hasCutoutsAvailable = images.some((img) => img.cutoutName);
 
     const imageList = images.map((img, i) => {
-      const typeTag = img.imageType === "background" ? " [배경용]" : img.imageType === "storyboard" ? " [스토리보드]" : "";
+      const typeTag = img.imageType === "background" ? " [배경용]" : img.imageType === "storyboard" ? " [스토리보드]" : img.imageType === "character" ? " [캐릭터 애니메이션]" : "";
       let line = `${i + 1}. ${img.name}${typeTag}`;
       if (img.cutoutName && img.cutoutDataUrl) {
         line += `\n   ${img.cutoutName} (배경 제거됨)`;
@@ -366,6 +367,10 @@ export default function AiModePage() {
       : "";
     const storyboardNote = storyboardImages.length > 0
       ? `\n\n## 스토리보드 이미지\n스토리보드로 지정된 이미지(${storyboardImages.map((img) => img.name).join(", ")})는 연출 참고용입니다.\n- 이미지 안의 화살표, 텍스트, 레이아웃 지시를 분석하여 연출에 반영하세요\n- 스토리보드 이미지 자체는 영상에 사용하지 마세요`
+      : "";
+    const characterImages = images.filter((img) => img.imageType === "character");
+    const characterNote = characterImages.length > 0
+      ? `\n\n## 캐릭터 애니메이션 (Puppet Pin)\n캐릭터로 지정된 이미지(${characterImages.map((img) => img.name).join(", ")})는 Puppet Pin으로 미세 애니메이션을 적용합니다.\n- type: "puppet"으로 레이어 생성\n- 이미지를 분석하여 움직일 부위(머리, 팔, 다리, 소품 등)의 핀 좌표를 지정\n- 고정할 부위(발, 바닥 등)도 지정\n- 모션 프리셋: nod(끄덕), swing(흔들림), wave(물결), breathe(호흡), shake(떨림), bob(위아래), bend(구부리기)\n- 자연스럽고 미세한 움직임 (과하지 않게)`
       : "";
 
     const formatMap: Record<string, string> = {
@@ -385,7 +390,7 @@ ${description ? `- 설명: ${description}` : "- 이미지를 분석해서 내용
 
 ## 사용 가능한 이미지 파일 (이 파일명만 사용!)
 ${imageList}
-${hasCutoutsAvailable ? "※ _cutout.png 파일은 배경 제거된 객체입니다" : ""}${bgNote}${storyboardNote}
+${hasCutoutsAvailable ? "※ _cutout.png 파일은 배경 제거된 객체입니다" : ""}${bgNote}${storyboardNote}${characterNote}
 
 ## 핵심: 모든 이미지를 하나의 영상에서 다양하게 연출!
 
@@ -682,16 +687,18 @@ JSON만 출력해주세요.`;
                       </div>
                       <button
                         onClick={() => toggleImageType(i)}
-                        title="클릭하여 타입 변경"
+                        title="클릭하여 타입 변경: 소스 → 배경 → 스토리보드 → 캐릭터"
                         className={`text-[10px] font-medium px-2 py-1 rounded-md transition-all flex-shrink-0 ${
                           img.imageType === "background"
                             ? "bg-blue-500/20 border border-blue-500/50 text-blue-400"
                             : img.imageType === "storyboard"
                             ? "bg-amber-500/20 border border-amber-500/50 text-amber-400"
+                            : img.imageType === "character"
+                            ? "bg-green-500/20 border border-green-500/50 text-green-400"
                             : "bg-white/10 border border-white/20 text-white/50 hover:border-white/40"
                         }`}
                       >
-                        {img.imageType === "background" ? "🌄 배경" : img.imageType === "storyboard" ? "📋 스토리보드" : "🖼️ 소스"}
+                        {img.imageType === "background" ? "🌄 배경" : img.imageType === "storyboard" ? "📋 스토리보드" : img.imageType === "character" ? "🦴 캐릭터" : "🖼️ 소스"}
                       </button>
                       <button onClick={() => removeImage(i)} className="text-red-400/60 hover:text-red-400 text-xs px-2">✕</button>
                     </div>

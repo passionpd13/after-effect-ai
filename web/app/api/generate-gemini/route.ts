@@ -34,7 +34,7 @@ effects.params 값 범위:
 
 === 허용되는 enum 값 (이것만 사용!) ===
 
-type (레이어): "image" | "text" | "shape"
+type (레이어): "image" | "text" | "shape" | "puppet"
 fit_mode: "cover" | "contain"
 shape_type: "arrow" | "line" | "circle" | "rectangle"
 alignment: "left" | "center" | "right"
@@ -50,6 +50,12 @@ transition.type: "none" | "cut" | "fade" | "crossfade" | "morph" | "slide_left" 
 effects.type: "drop_shadow" | "glow" | "blur" | "vignette" | "grain" | "light_sweep" | "lens_flare"
 
 camera.type: "static" | "zoom_through" | "orbit" | "dolly" | "crane" | "parallax_scroll"
+
+puppet pin.motion: "nod" | "swing" | "wave" | "breathe" | "shake" | "bob" | "bend"
+puppet pin.amount: 2 ~ 20 (px, 움직임 크기)
+puppet pin.speed: 0.3 ~ 2.0 (반복 속도)
+puppet wiggle.frequency: 1 ~ 5 (초당 진동 횟수)
+puppet wiggle.amount: 1 ~ 10 (px)
 
 style_preset: "cinematic" | "news" | "documentary" | "bold" | "minimal" | "epic" | "tech"
 format: "vertical" | "horizontal" | "square"
@@ -214,6 +220,50 @@ format: "vertical" | "horizontal" | "square"
 - 배경 이미지 animation.type: "none" (확대/축소/이동 등 애니메이션 금지)
 - 배경 이미지 scale: [100, 100] (원본 크기 유지, 확대/축소 금지)
 
+=== 캐릭터 Puppet Pin 레이어 (type: "puppet") ===
+캐릭터 애니메이션용 이미지는 type: "puppet"으로 생성합니다.
+이미지를 분석하여 움직일 부위의 핀 좌표를 지정하고, 모션 프리셋을 선택합니다.
+
+puppet 레이어 JSON 예시:
+{
+  "id": "char_1",
+  "type": "puppet",
+  "name": "캐릭터",
+  "image_source": { "file": "캐릭터.png", "fit_mode": "contain" },
+  "transform": { "position": {"x": 540, "y": 600}, "scale": [100, 100], "opacity": 100 },
+  "entrance": { "type": "fade_in", "delay": 0, "duration": 0.8, "easing": "ease_out" },
+  "pins": [
+    { "name": "head", "x": 540, "y": 200, "motion": "nod", "amount": 6, "speed": 0.8 },
+    { "name": "right_arm", "x": 700, "y": 350, "motion": "swing", "amount": 12, "speed": 0.5 },
+    { "name": "left_arm", "x": 400, "y": 380, "motion": "swing", "amount": 8, "speed": 0.6 },
+    { "name": "body", "x": 540, "y": 450, "motion": "breathe", "amount": 3, "speed": 0.4 },
+    { "name": "tail", "x": 350, "y": 500, "motion": "wave", "amount": 15, "speed": 1.0 }
+  ],
+  "fixed_pins": [
+    { "name": "feet_left", "x": 480, "y": 700 },
+    { "name": "feet_right", "x": 600, "y": 700 }
+  ],
+  "wiggle_elements": [
+    { "property": "rotation", "frequency": 2, "amount": 1 }
+  ]
+}
+
+puppet 모션 프리셋 설명:
+- nod: 머리 끄덕임 (상하 사인파), 대화/반응용
+- swing: 팔/물건 진자 흔들림, 팔 동작/물건 들기용
+- wave: 물결/바람 효과 (연속 사인파), 망토/꼬리/종이/갈대용
+- breathe: 미세 상하 (느린 호흡), 몸통에 적용
+- shake: 빠른 떨림, 무서움/긴장/분노 표현
+- bob: 위아래 반복, 걷는 느낌/떠 있는 물건
+- bend: 구부리기 (CC Bend It 이펙트), 꼬리/나무/팔 구부림
+
+핀 좌표 규칙:
+- x, y는 이미지 내 실제 픽셀 좌표 (이미지 크기 기준)
+- 고정 핀(fixed_pins)은 움직이면 안 되는 부위 (발, 바닥 접점 등)
+- 고정 핀이 없으면 전체가 흔들려 부자연스러움 → 반드시 지정!
+- amount는 2~20px 범위 (미세하게! 과하면 부자연스러움)
+- 핀은 5~10개 정도가 적당
+
 === 텍스트 가독성 규칙 (필수!) ===
 - font_weight는 반드시 "bold" 또는 "black" (regular 절대 금지)
 - 모든 텍스트에 stroke 필수 (enabled: true, color: [0,0,0], width: 4~6)
@@ -300,6 +350,7 @@ export async function POST(req: NextRequest) {
         if (img.is_cutout) tags.push("배경 제거됨");
         if (img.image_type === "background") tags.push("배경용");
         if (img.image_type === "storyboard") tags.push("스토리보드 - 연출 참고용");
+        if (img.image_type === "character") tags.push("캐릭터 - Puppet Pin 애니메이션");
         const tagStr = tags.length > 0 ? ` (${tags.join(", ")})` : "";
         return `- ${img.name}${tagStr}`;
       })
@@ -307,11 +358,15 @@ export async function POST(req: NextRequest) {
 
     const bgImages = images.filter((img) => img.image_type === "background");
     const storyboardImages = images.filter((img) => img.image_type === "storyboard");
+    const characterImages = images.filter((img) => img.image_type === "character");
     const bgNote = bgImages.length > 0
       ? `\n배경 이미지: ${bgImages.map((img) => img.name).join(", ")} → 반드시 layers 배열 마지막에 배치, z_position: -2000, effects 금지, opacity: 100`
       : "";
     const storyboardNote = storyboardImages.length > 0
       ? `\n스토리보드 이미지: ${storyboardImages.map((img) => img.name).join(", ")} → 연출 참고용 (화살표, 텍스트, 레이아웃 지시를 분석하여 반영). 영상에 직접 사용 금지!`
+      : "";
+    const characterNote = characterImages.length > 0
+      ? `\n캐릭터 이미지: ${characterImages.map((img) => img.name).join(", ")} → type: "puppet" 레이어로 생성. 이미지를 분석하여 움직일 부위(머리, 팔, 소품 등)에 핀 좌표 지정. 고정 핀(발, 바닥) 필수. amount는 미세하게(2~15px).`
       : "";
 
     parts.push({
@@ -323,7 +378,7 @@ export async function POST(req: NextRequest) {
 ${description ? `설명: ${description}` : "이미지를 분석하여 자동으로 판단해주세요."}
 
 사용 가능한 파일:
-${imageList}${bgNote}${storyboardNote}
+${imageList}${bgNote}${storyboardNote}${characterNote}
 
 핵심 요구사항:
 1. 이미지 1장 = 씬 1개 금지! 한 씬에 여러 이미지를 동시 배치. 씬 수는 자유롭게 (3~8개)
