@@ -16,6 +16,59 @@
 // ============================================================
 // [0] 유틸리티 함수
 // ============================================================
+
+// 파일 헤더를 읽어서 실제 이미지 포맷 감지 (확장자와 내용 불일치 수정)
+function detectAndFixImageFile(filePath) {
+    var f = new File(filePath);
+    if (!f.exists) return f;
+
+    // 바이너리 모드로 처음 4바이트 읽기
+    f.open("r");
+    f.encoding = "BINARY";
+    var header = f.read(4);
+    f.close();
+
+    // 실제 포맷 감지
+    var actualExt = "";
+    if (header.length >= 4) {
+        var b0 = header.charCodeAt(0);
+        var b1 = header.charCodeAt(1);
+        var b2 = header.charCodeAt(2);
+        var b3 = header.charCodeAt(3);
+
+        if (b0 === 0x89 && b1 === 0x50 && b2 === 0x4E && b3 === 0x47) {
+            actualExt = ".png";  // PNG: 89 50 4E 47
+        } else if (b0 === 0xFF && b1 === 0xD8 && b2 === 0xFF) {
+            actualExt = ".jpg";  // JPEG: FF D8 FF
+        } else if (b0 === 0x47 && b1 === 0x49 && b2 === 0x46) {
+            actualExt = ".gif";  // GIF: 47 49 46
+        } else if (b0 === 0x42 && b1 === 0x4D) {
+            actualExt = ".bmp";  // BMP: 42 4D
+        } else if (b0 === 0x52 && b1 === 0x49 && b2 === 0x46 && b3 === 0x46) {
+            actualExt = ".webp"; // WEBP: 52 49 46 46 (RIFF)
+        } else if ((b0 === 0x49 && b1 === 0x49) || (b0 === 0x4D && b1 === 0x4D)) {
+            actualExt = ".tiff"; // TIFF: 49 49 or 4D 4D
+        }
+    }
+
+    if (!actualExt) return f; // 감지 실패시 원본 사용
+
+    // 현재 확장자와 비교
+    var currentName = f.name;
+    var dotIdx = currentName.lastIndexOf(".");
+    var currentExt = dotIdx >= 0 ? currentName.slice(dotIdx).toLowerCase() : "";
+
+    // 확장자 일치하면 그대로 반환
+    if (currentExt === actualExt) return f;
+    if (currentExt === ".jpeg" && actualExt === ".jpg") return f;
+    if (currentExt === ".jpg" && actualExt === ".jpg") return f;
+
+    // 불일치! 올바른 확장자로 복사본 생성
+    var newName = dotIdx >= 0 ? currentName.slice(0, dotIdx) + actualExt : currentName + actualExt;
+    var newPath = new File(f.parent.fsName + "/" + newName);
+    f.copy(newPath);
+    return newPath;
+}
 // 색상값을 안전한 [R,G,B] 배열로 변환 (0~1 범위)
 // [R,G,B,A] 4개 값이면 A는 무시하고 3개만 사용
 // [255,0,0] 같은 0~255 범위는 자동 변환
@@ -140,7 +193,8 @@ function importAndPlaceImage(comp, scene, startTime, projectFolder) {
         return null;
     }
     
-    // 이미지 임포트
+    // 이미지 임포트 (확장자/내용 불일치 자동 수정)
+    imagePath = detectAndFixImageFile(imagePath);
     var importOptions = new ImportOptions(imagePath);
     var footage = app.project.importFile(importOptions);
     
@@ -1033,6 +1087,7 @@ function processV2(comp, data, projectFolder) {
                     errorLog.push("씬 " + (si+1) + " '" + (layerDef.name || layerDef.id) + "': 파일 없음 → " + imgPath.fsName);
                 } else {
                     try {
+                        imgPath = detectAndFixImageFile(imgPath);
                         var importOpts = new ImportOptions(imgPath);
                         var footage = app.project.importFile(importOpts);
                         aeLayer = comp.layers.add(footage);
@@ -1210,6 +1265,7 @@ function processV2(comp, data, projectFolder) {
                 if (!puppetPath.exists) {
                     errorLog.push("씬 " + (si+1) + " puppet '" + (layerDef.name || layerDef.id) + "': 파일 없음 → " + puppetPath.fsName);
                 } else {
+                    puppetPath = detectAndFixImageFile(puppetPath);
                     var puppetImport = new ImportOptions(puppetPath);
                     var puppetFootage = app.project.importFile(puppetImport);
                     aeLayer = comp.layers.add(puppetFootage);
