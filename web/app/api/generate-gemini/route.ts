@@ -124,7 +124,7 @@ wiggle.amount: 1 ~ 15
           "name": "캐릭터 이름",
           "rig_mode": "advanced",
           "action": "",
-          "image_source": { "file": "실제파일명.확장자", "fit_mode": "contain" },
+          "image_source": { "file": "실제파일명.확장자", "fit_mode": "cover" },
           "transform": { "position": {"x": 960, "y": 540}, "scale": [100, 100], "opacity": 100 },
           "entrance": { "type": "fade_in", "delay": 0, "duration": 0.5, "easing": "ease_out" },
           "joints": [
@@ -157,9 +157,17 @@ wiggle.amount: 1 ~ 15
   "render": { "output_format": "mp4", "codec": "h264", "quality": "high", "output_filename": "output.mp4" }
 }
 
+=== 이미지 표시 규칙 (필수!) ===
+- **fit_mode: "cover" 필수!** 원본 이미지가 화면을 꽉 채워야 합니다
+- 원본 이미지(배경+캐릭터 모두)가 그대로 보여야 합니다. 이미지가 안 보이면 실패입니다!
+- transform.position: 반드시 컴포지션 중앙 {"x": 너비/2, "y": 높이/2}
+- transform.scale: [100, 100] (cover 스케일링은 JSX가 자동 처리)
+- opacity: 100 (완전 불투명)
+
 === 관절 좌표 규칙 ===
-- x, y는 이미지 내 실제 픽셀 좌표 (컴포지션 크기 기준)
-- 이미지가 contain으로 맞춰진 상태에서 캐릭터의 각 부위 위치를 추정
+- x, y는 컴포지션 크기 기준의 픽셀 좌표 (이미지가 cover로 화면을 채운 상태에서의 위치)
+- 가로형(1920x1080): x는 0~1920, y는 0~1080
+- 세로형(1080x1920): x는 0~1080, y는 0~1920
 - 고정 핀(fixed_pins)은 반드시 지정! (발, 바닥 접점) → 없으면 전체가 흔들림
 - 관절(joints)은 이미지당 6~15개 정도가 이상적
 - 각 관절마다 part, motion, amount, speed, phase를 다르게 설정 (자연스러운 동작)
@@ -415,7 +423,7 @@ puppet 레이어 JSON 예시:
   "id": "char_1",
   "type": "puppet",
   "name": "캐릭터",
-  "image_source": { "file": "위 파일 목록 중 실제 파일명 (확장자 포함)", "fit_mode": "contain" },
+  "image_source": { "file": "위 파일 목록 중 실제 파일명 (확장자 포함)", "fit_mode": "cover" },
   "transform": { "position": {"x": 540, "y": 600}, "scale": [100, 100], "opacity": 100 },
   "entrance": { "type": "fade_in", "delay": 0, "duration": 0.8, "easing": "ease_out" },
   "pins": [
@@ -574,20 +582,22 @@ ${description ? `연출 설명: ${description}` : ""}
 ${fileList}
 
 요구사항:
-1. 이미지 1장 = 씬 1개, 각 씬에 puppet 레이어 1개만 (텍스트/도형 레이어 추가 금지!)
-2. 각 이미지를 **정밀 분석**하여 캐릭터의 관절을 식별: 머리, 목, 몸통, 팔(좌/우), 손(좌/우), 다리(좌/우), 소품 등
-3. **joints 배열** 사용 (pins 대신): 각 관절에 name, part, x, y, motion, amount, speed, phase 설정
-4. **phase가 핵심**: 좌우 대칭 부위는 180° 차이, 연결 부위는 30~90° 차이로 자연스러운 연동
-5. rig_mode: "advanced" (관절별 상세 설정)
-6. fixed_pins로 발/바닥 접점 반드시 고정
-7. 관절은 이미지당 8~15개 (충분히 상세하게!)
-8. 캐릭터의 감정/상황을 파악하여 모션 강도/속도 조절
-9. bend_zones로 팔꿈치, 무릎 등 관절 부위 정밀 구부림 추가
-10. expression_links로 팔→손, 몸→머리 등 관절 연동 설정
-11. settings: width=${fmt.w}, height=${fmt.h}, fps=${fpsVal}, total_duration=${dur}
-12. transition_to_next: crossfade (duration 0.5)
-13. entrance: fade_in만 사용
-14. wiggle_elements로 미세한 자연스러운 떨림 추가
+★★★ 가장 중요: 원본 이미지가 반드시 화면에 보여야 합니다! ★★★
+1. **fit_mode: "cover"** 필수! 원본 이미지가 화면을 꽉 채워야 합니다
+2. **transform.position: {"x": ${fmt.w / 2}, "y": ${fmt.h / 2}}** (정확히 컴포지션 중앙)
+3. **transform.scale: [100, 100], opacity: 100** (cover 스케일은 JSX가 자동 처리)
+4. 이미지 1장 = 씬 1개, 각 씬에 puppet 레이어 1개만 (텍스트/도형 레이어 추가 금지!)
+5. 각 이미지를 **정밀 분석**하여 캐릭터의 관절을 식별: 머리, 목, 몸통, 팔(좌/우), 손(좌/우), 다리(좌/우), 소품 등
+6. **joints 배열** 사용: 각 관절에 name, part, x, y, motion, amount, speed, phase 설정
+7. **x, y 좌표는 컴포지션 기준** (가로형: 0~${fmt.w}, 0~${fmt.h})
+8. **phase가 핵심**: 좌우 대칭 부위는 180° 차이, 연결 부위는 30~90° 차이
+9. rig_mode: "advanced" (관절별 상세 설정)
+10. fixed_pins로 발/바닥 접점 반드시 고정
+11. 관절은 이미지당 8~15개 (충분히 상세하게!)
+12. settings: width=${fmt.w}, height=${fmt.h}, fps=${fpsVal}, total_duration=${dur}
+13. transition_to_next: crossfade (duration 0.5)
+14. entrance: fade_in만 사용
+15. wiggle_elements로 미세한 자연스러운 떨림 추가
 
 JSON만 출력.`,
       });
