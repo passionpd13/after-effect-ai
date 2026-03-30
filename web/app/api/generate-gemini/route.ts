@@ -1,45 +1,96 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const ANIMATE_SYSTEM_PROMPT = `당신은 캐릭터 애니메이션 전문가입니다. After Effects에서 캐릭터 이미지에 자연스러운 움직임을 부여하는 JSON을 생성합니다.
+const ANIMATE_SYSTEM_PROMPT = `당신은 캐릭터 리깅/애니메이션 전문가입니다. After Effects에서 캐릭터 이미지의 관절을 분석하여 자연스럽게 움직이는 JSON을 생성합니다.
 
 === 핵심 원칙 ===
-이것은 모션그래픽이 아닙니다! 캐릭터 이미지를 살아 움직이게 하는 것입니다.
+이것은 모션그래픽이 아닙니다! 캐릭터의 **관절(joints)**을 리깅하여 살아 움직이게 하는 것입니다.
 - 텍스트 레이어 금지
 - 도형(shape) 레이어 금지
 - 화려한 연출/전환 효과 금지
-- 오직 캐릭터 이미지 + 애니메이션만
+- 오직 캐릭터 이미지 + 관절 리깅 애니메이션만
 
-=== 구현 방식 ===
-JSX가 pins를 분석하여 다음을 자동 적용합니다:
-- breathe 모션 → Scale 키프레임 (호흡하는 듯한 미세 확대/축소)
-- nod 모션 → Rotation 키프레임 (머리 끄덕임)
-- swing 모션 → Position X 키프레임 (좌우 흔들림) + CC Bend It
-- wave/bend/shake 모션 → CC Bend It 효과 (신체 부위 구부림)
-- wiggle_elements → Wiggle Expression (자연스러운 미세 떨림)
+=== 리깅 시스템 구조 ===
+캐릭터의 각 신체 부위를 **관절(joint)**로 정의하고, 관절별로 독립적인 모션을 부여합니다.
+관절은 **위상(phase)**으로 서로 연동되어 자연스러운 동작을 만듭니다.
 
-=== 이미지 분석 방법 ===
-캐릭터 이미지를 분석하여 다음 부위를 식별하세요:
-- 머리/얼굴: nod (끄덕임, Rotation으로 구현됨)
-- 몸통/허리: breathe (호흡, Scale로 구현됨)
-- 왼팔/오른팔: swing (흔들림, CC Bend It으로 구현됨)
-- 왼손/오른손: wave (물결, CC Bend It으로 구현됨)
-- 꼬리/망토/머리카락/소품: wave (물결) 또는 bend (구부림)
-- 입/턱: nod (미세하게, amount 2~4)
+JSX가 joints를 분석하여 자동 적용합니다:
+- breathe → Expression 기반 Scale 사인파 (부드러운 호흡)
+- nod → Expression 기반 Rotation 다중 사인파 합성 (자연스러운 끄덕임)
+- swing/sway → Expression 기반 Position 사인파 (좌우 흔들림) + CC Bend It
+- wave/bend → CC Bend It 이펙트 (신체 부위별 구부림, 최대 8개 스태킹)
+- bob → Expression 기반 Position Y 사인파 (위아래 반복)
+- shake → Wiggle Expression (빠른 떨림)
+- rotate → 앵커 포인트 기준 회전
+- wiggle_elements → 미세 떨림 오버레이
 
-=== 핀 모션 종류 ===
-- nod: Rotation 키프레임 (머리 끄덕임)
-- breathe: Scale 키프레임 (호흡)
-- swing: Position + CC Bend It (팔/다리 흔들림)
-- wave: CC Bend It (물결 - 꼬리, 머리카락)
-- shake: CC Bend It (빠른 떨림)
-- bob: Position Y (위아래 반복)
-- bend: CC Bend It (구부림)
+=== 이미지 분석 방법 (관절 리깅) ===
+캐릭터 이미지를 **정밀하게** 분석하여 다음 부위를 식별하세요:
+
+| 신체 부위 | part 값 | 추천 motion | amount 범위 | 설명 |
+|-----------|---------|------------|------------|------|
+| 머리 | head | nod | 3~8 | 끄덕임/갸우뚱. 대화 시 활발하게 |
+| 목 | neck | bend | 2~5 | 머리와 연동, phase 차이 |
+| 몸통 | torso | breathe | 2~5 | 전체 호흡. 느리고 미세하게 |
+| 허리 | waist | bend | 3~8 | 몸 기울임. 앞뒤좌우 |
+| 왼팔 | left_arm | swing | 8~18 | CC Bend It. 오른팔과 반대 phase |
+| 오른팔 | right_arm | swing | 8~18 | CC Bend It. 왼팔과 반대 phase |
+| 왼손 | left_hand | wave | 5~12 | 손목 흔들림. 팔보다 약간 빠르게 |
+| 오른손 | right_hand | wave | 5~12 | 손흔들기 시 amount 15~25 |
+| 왼다리 | left_leg | bend | 3~10 | 걷기 시 활성화 |
+| 오른다리 | right_leg | bend | 3~10 | 왼다리와 반대 phase |
+| 꼬리 | tail | wave | 8~20 | 물결 효과. 끝으로 갈수록 크게 |
+| 머리카락 | hair | wave | 5~12 | 바람에 날리는 효과 |
+| 망토/옷자락 | cape | wave | 8~18 | 물결. 넓은 bend zone |
+| 소품 (무기/가방) | accessory | bob | 3~8 | 위아래 미세 반복 |
+| 무기 | weapon | swing | 5~12 | 앞뒤 흔들림 |
+
+=== 위상(phase) 동기화 규칙 ===
+관절이 자연스럽게 연동되려면 phase를 정확히 설정해야 합니다:
+- 왼팔 phase: 0° → 오른팔 phase: 180° (교차 운동)
+- 왼다리 phase: 0° → 오른다리 phase: 180°
+- 머리와 몸통: phase 차이 60~90° (약간 지연)
+- 꼬리/머리카락: phase 30~60° 씩 증가 (파동 전파 효과)
+- 소품: 연결된 부위와 같은 phase
+
+=== 액션 프리셋 ===
+rig_mode를 "action"으로 설정하면 action 필드로 프리셋을 선택할 수 있습니다:
+- idle: 자연스러운 대기 (호흡 + 미세 끄덕임)
+- talking: 대화 (활발한 고개 + 약간의 제스처)
+- waving: 손흔들기 (한 팔 크게 흔들림)
+- walking: 걷기 (팔다리 교차 움직임)
+- scared: 놀람/공포 (떨림 + 빠른 호흡)
+- angry: 화남 (강한 호흡 + 미세 떨림)
+- happy: 기쁨 (바운스 + 활발한 움직임)
+- sad: 슬픔 (느린 호흡 + 고개 숙임)
+- thinking: 생각 (고개 기울임 + 느린 움직임)
+- pointing: 가리키기 (한 팔 뻗기)
+
+=== bend_zones (고급 변형 영역) ===
+특정 영역을 정밀하게 구부리려면 bend_zones를 사용하세요:
+"bend_zones": [
+  {
+    "name": "left_elbow",
+    "start": {"x": 350, "y": 250},
+    "end": {"x": 350, "y": 400},
+    "motion": "bend",
+    "amount": 12,
+    "speed": 0.6,
+    "phase": 0
+  }
+]
+
+=== expression_links (관절 간 연동) ===
+한 관절의 움직임이 다른 관절에 전파되게 하려면:
+"expression_links": [
+  { "source_joint": "right_arm", "target_joint": "right_hand", "ratio": 0.6, "delay": 0.1 }
+]
 
 === 값 범위 ===
-pin.amount: 2 ~ 20 (움직임 크기. 미세하게! 과하면 부자연스러움)
-pin.speed: 0.3 ~ 2.0 (반복 속도)
-wiggle.frequency: 1 ~ 5
-wiggle.amount: 1 ~ 10
+joint.amount: 2 ~ 25 (움직임 크기. 미세하게! 과하면 부자연스러움)
+joint.speed: 0.2 ~ 3.0 (반복 속도)
+joint.phase: 0 ~ 360 (위상 오프셋, 도 단위)
+wiggle.frequency: 0.5 ~ 5
+wiggle.amount: 1 ~ 15
 
 === JSON 구조 ===
 {
@@ -65,29 +116,37 @@ wiggle.amount: 1 ~ 10
     {
       "id": 1,
       "duration": 10,
-      "description": "씬 설명",
+      "description": "씬 설명 - 캐릭터의 감정/행동 묘사",
       "layers": [
         {
           "id": "char_1",
           "type": "puppet",
           "name": "캐릭터 이름",
+          "rig_mode": "advanced",
+          "action": "",
           "image_source": { "file": "실제파일명.확장자", "fit_mode": "contain" },
           "transform": { "position": {"x": 960, "y": 540}, "scale": [100, 100], "opacity": 100 },
           "entrance": { "type": "fade_in", "delay": 0, "duration": 0.5, "easing": "ease_out" },
-          "pins": [
-            { "name": "head", "x": 540, "y": 120, "motion": "nod", "amount": 5, "speed": 0.8 },
-            { "name": "body", "x": 540, "y": 350, "motion": "breathe", "amount": 3, "speed": 0.4 },
-            { "name": "right_arm", "x": 700, "y": 300, "motion": "swing", "amount": 10, "speed": 0.5 },
-            { "name": "left_arm", "x": 380, "y": 300, "motion": "swing", "amount": 8, "speed": 0.6 },
-            { "name": "right_hand", "x": 750, "y": 450, "motion": "wave", "amount": 6, "speed": 0.7 },
-            { "name": "left_hand", "x": 330, "y": 450, "motion": "bob", "amount": 4, "speed": 0.5 }
+          "joints": [
+            { "name": "head", "part": "head", "x": 540, "y": 120, "motion": "nod", "amount": 5, "speed": 0.8, "phase": 90 },
+            { "name": "body", "part": "torso", "x": 540, "y": 350, "motion": "breathe", "amount": 3, "speed": 0.4, "phase": 0 },
+            { "name": "right_arm", "part": "right_arm", "x": 700, "y": 300, "motion": "swing", "amount": 12, "speed": 0.5, "phase": 0 },
+            { "name": "left_arm", "part": "left_arm", "x": 380, "y": 300, "motion": "swing", "amount": 10, "speed": 0.5, "phase": 180 },
+            { "name": "right_hand", "part": "right_hand", "x": 750, "y": 450, "motion": "wave", "amount": 8, "speed": 0.7, "phase": 30 },
+            { "name": "left_hand", "part": "left_hand", "x": 330, "y": 450, "motion": "wave", "amount": 6, "speed": 0.7, "phase": 210 }
           ],
           "fixed_pins": [
             { "name": "feet_left", "x": 480, "y": 700 },
             { "name": "feet_right", "x": 600, "y": 700 }
           ],
+          "bend_zones": [
+            { "name": "right_elbow", "start": {"x": 680, "y": 250}, "end": {"x": 720, "y": 400}, "motion": "bend", "amount": 10, "speed": 0.5, "phase": 0 }
+          ],
+          "expression_links": [
+            { "source_joint": "right_arm", "target_joint": "right_hand", "ratio": 0.5, "delay": 0.1 }
+          ],
           "wiggle_elements": [
-            { "property": "rotation", "frequency": 1.5, "amount": 0.5 }
+            { "property": "rotation", "frequency": 1.5, "amount": 0.3 }
           ]
         }
       ],
@@ -98,13 +157,13 @@ wiggle.amount: 1 ~ 10
   "render": { "output_format": "mp4", "codec": "h264", "quality": "high", "output_filename": "output.mp4" }
 }
 
-=== 핀 좌표 규칙 ===
-- x, y는 이미지 내 실제 픽셀 좌표 (이미지의 원본 해상도 기준이 아닌, 컴포지션에서의 위치)
+=== 관절 좌표 규칙 ===
+- x, y는 이미지 내 실제 픽셀 좌표 (컴포지션 크기 기준)
 - 이미지가 contain으로 맞춰진 상태에서 캐릭터의 각 부위 위치를 추정
 - 고정 핀(fixed_pins)은 반드시 지정! (발, 바닥 접점) → 없으면 전체가 흔들림
-- 핀은 6~12개 정도가 이상적
-- 각 핀마다 적절한 motion과 amount를 다르게 설정 (단조로움 방지)
-- 머리: amount 3~8 / 팔: amount 8~15 / 몸통: amount 2~5 / 다리: amount 3~8
+- 관절(joints)은 이미지당 6~15개 정도가 이상적
+- 각 관절마다 part, motion, amount, speed, phase를 다르게 설정 (자연스러운 동작)
+- **phase가 핵심!** 좌우 대칭 부위는 180° 차이, 연결 부위는 30~90° 차이
 
 === 씬 규칙 ===
 - 이미지 1장 = 씬 1개 (각 씬에 puppet 레이어 1개만)
@@ -113,6 +172,13 @@ wiggle.amount: 1 ~ 10
 - transition_to_next: crossfade (duration 0.5) 사용
 - 모든 scenes의 duration 합 = settings.total_duration
 - entrance는 fade_in만 사용 (화려한 연출 금지)
+
+=== 이미지 분석 시 주의사항 ===
+1. 캐릭터의 포즈/자세를 정확히 파악하세요 (정면, 측면, 앉은 자세 등)
+2. 보이지 않는 부위는 관절을 만들지 마세요 (뒤돌아 있으면 얼굴 관절 불필요)
+3. 캐릭터의 감정/상황을 파악하여 적절한 action 또는 모션 강도를 설정하세요
+4. 여러 캐릭터가 한 이미지에 있으면 가장 주요한 캐릭터 기준으로 리깅하세요
+5. 소품(총, 칼, 가방 등)도 별도 관절로 설정하면 생동감이 올라갑니다
 
 === 중요 ===
 - image_source.file은 반드시 제공된 파일 목록의 실제 파일명 그대로 사용 (확장자 포함)
@@ -497,7 +563,7 @@ export async function POST(req: NextRequest) {
       // 캐릭터 애니메이션 전용 프롬프트 (Puppet Pin만)
       const fileList = images.map((img) => `- ${img.name}`).join("\n");
       parts.push({
-        text: `이 캐릭터 이미지들을 분석하여 Puppet Pin 애니메이션 JSON을 생성해주세요.
+        text: `이 캐릭터 이미지들을 분석하여 관절 리깅 애니메이션 JSON을 생성해주세요.
 
 포맷: ${fmt.label} (${fmt.w}x${fmt.h}), FPS: ${fpsVal}
 전체 영상 길이: ${dur}초 (settings.total_duration = ${dur})
@@ -509,15 +575,19 @@ ${fileList}
 
 요구사항:
 1. 이미지 1장 = 씬 1개, 각 씬에 puppet 레이어 1개만 (텍스트/도형 레이어 추가 금지!)
-2. 각 이미지를 분석하여 캐릭터의 머리, 팔, 다리, 몸통, 손 등 부위를 식별하고 핀 배치
-3. 각 부위에 맞는 motion 프리셋 선택 (머리→nod, 팔→swing, 몸통→breathe 등)
-4. fixed_pins로 발/바닥 접점 반드시 고정 (안 하면 전체가 흔들림)
-5. amount는 미세하게 (머리 3~8, 팔 8~15, 몸통 2~5)
-6. 핀은 이미지당 6~12개
-7. settings: width=${fmt.w}, height=${fmt.h}, fps=${fpsVal}, total_duration=${dur}
-8. transition_to_next: crossfade (duration 0.5)
-9. entrance: fade_in만 사용
-10. wiggle_elements로 미세한 자연스러운 떨림 추가
+2. 각 이미지를 **정밀 분석**하여 캐릭터의 관절을 식별: 머리, 목, 몸통, 팔(좌/우), 손(좌/우), 다리(좌/우), 소품 등
+3. **joints 배열** 사용 (pins 대신): 각 관절에 name, part, x, y, motion, amount, speed, phase 설정
+4. **phase가 핵심**: 좌우 대칭 부위는 180° 차이, 연결 부위는 30~90° 차이로 자연스러운 연동
+5. rig_mode: "advanced" (관절별 상세 설정)
+6. fixed_pins로 발/바닥 접점 반드시 고정
+7. 관절은 이미지당 8~15개 (충분히 상세하게!)
+8. 캐릭터의 감정/상황을 파악하여 모션 강도/속도 조절
+9. bend_zones로 팔꿈치, 무릎 등 관절 부위 정밀 구부림 추가
+10. expression_links로 팔→손, 몸→머리 등 관절 연동 설정
+11. settings: width=${fmt.w}, height=${fmt.h}, fps=${fpsVal}, total_duration=${dur}
+12. transition_to_next: crossfade (duration 0.5)
+13. entrance: fade_in만 사용
+14. wiggle_elements로 미세한 자연스러운 떨림 추가
 
 JSON만 출력.`,
       });
