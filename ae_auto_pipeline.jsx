@@ -18,12 +18,10 @@
 // ============================================================
 
 // 파일 헤더를 읽어서 실제 이미지 포맷 감지 → 확장자 불일치 시 원본을 RENAME
-// ★ 복사본을 만들지 않음! 원본 파일 자체의 확장자를 변경하여 JSON 참조와 무관하게 처리
 function detectAndFixImageFile(filePath) {
     var f = new File(filePath);
     if (!f.exists) return f;
 
-    // 바이너리 모드로 처음 4바이트 읽기
     f.open("r");
     f.encoding = "BINARY";
     var header = f.read(4);
@@ -46,37 +44,29 @@ function detectAndFixImageFile(filePath) {
     var currentExt = dotIdx >= 0 ? currentName.slice(dotIdx).toLowerCase() : "";
     if (currentExt === actualExt || (currentExt === ".jpeg" && actualExt === ".jpg")) return f;
 
-    // 확장자 불일치! 원본 파일을 RENAME (복사 아님!)
+    // 확장자 불일치! 원본 파일을 올바른 확장자로 복사 (원본 유지 + 올바른 파일 생성)
     var newName = dotIdx >= 0 ? currentName.slice(0, dotIdx) + actualExt : currentName + actualExt;
     var newPath = new File(f.parent.fsName + "/" + newName);
-    f.rename(newName);
-    return new File(f.parent.fsName + "/" + newName);
+    if (!newPath.exists) {
+        f.copy(newPath);
+    }
+    return newPath;
 }
 
-// 이미지를 안전하게 임포트 (PNGIO 오류 시 확장자 수정 후 재시도)
+// ★ 이미지를 안전하게 임포트 (항상 포맷 감지 먼저 → PNGIO 에러 방지)
 function safeImportImage(filePath) {
-    var f = new File(filePath);
-    // 1차: 그대로 임포트 시도
-    try {
-        var opts = new ImportOptions(f);
-        return app.project.importFile(opts);
-    } catch (e1) {
-        // 2차: 확장자 수정 후 재시도
-        var fixed = detectAndFixImageFile(filePath);
-        try {
-            var opts2 = new ImportOptions(fixed);
-            return app.project.importFile(opts2);
-        } catch (e2) {
-            throw new Error("임포트 실패: " + f.name + " → " + e2.toString());
-        }
-    }
+    // AE의 PNGIO 에러는 try-catch로 잡을 수 없음 (모달 다이얼로그가 먼저 뜸)
+    // 따라서 항상 먼저 포맷을 확인하고 확장자를 맞춘 후 임포트
+    var fixed = detectAndFixImageFile(filePath);
+    var opts = new ImportOptions(fixed);
+    return app.project.importFile(opts);
 }
 
 // 프로젝트 폴더에서 이미지 파일 찾기 (파일명 불일치 대응)
 function findImageFile(projectFolder, fileName) {
     // 1. 정확한 파일명으로 시도
     var exactPath = new File(projectFolder + "/" + fileName);
-    if (exactPath.exists) return exactPath;
+    if (exactPath.exists) return detectAndFixImageFile(exactPath.fsName);
 
     // 2. 하위 폴더 포함 검색 (ZIP 해제 시 폴더가 중첩될 수 있음)
     var folder = new Folder(projectFolder);
