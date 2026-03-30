@@ -7,7 +7,8 @@ export default function Navbar() {
 
   const links = [
     { href: "/", label: "홈" },
-    { href: "/ai", label: "AI 자동생성" },
+    { href: "/ai", label: "AI 모션그래픽" },
+    { href: "/animate", label: "AI 애니메이션" },
     { href: "/editor", label: "수동 에디터" },
     { href: "/examples", label: "예제" },
     { href: "/docs", label: "문서" },
