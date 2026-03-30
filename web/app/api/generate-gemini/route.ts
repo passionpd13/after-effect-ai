@@ -75,7 +75,7 @@ joint.phase: 0 ~ 360 (위상 오프셋)
     "total_duration": 30,
     "background": {
       "type": "solid",
-      "color": [0.05, 0.05, 0.08]
+      "color": [1.0, 1.0, 1.0]
     }
   },
   "global_style": { "font_family": "NotoSansKR" },
@@ -91,7 +91,6 @@ joint.phase: 0 ~ 360 (위상 오프셋)
           "name": "캐릭터 이름",
           "image_source": { "file": "실제파일명.확장자", "fit_mode": "cover" },
           "transform": { "position": {"x": 960, "y": 540}, "scale": [100, 100], "opacity": 100 },
-          "entrance": { "type": "fade_in", "delay": 0, "duration": 0.5, "easing": "ease_out" },
           "joints": [
             { "name": "head", "part": "head", "x": 540, "y": 120, "motion": "nod", "amount": 3, "speed": 0.35, "phase": 90 },
             { "name": "body", "part": "torso", "x": 540, "y": 350, "motion": "breathe", "amount": 2, "speed": 0.3, "phase": 0 },
@@ -134,7 +133,7 @@ joint.phase: 0 ~ 360 (위상 오프셋)
 - 각 씬의 layers 배열에는 해당 이미지의 puppet 레이어만 넣으세요
 - transition_to_next: crossfade (duration 0.5) 사용
 - 모든 scenes의 duration 합 = settings.total_duration
-- entrance는 fade_in만 사용 (화려한 연출 금지)
+- entrance 사용 금지! (이미지를 즉시 표시해야 합니다)
 
 === 이미지 분석 시 주의사항 ===
 1. 캐릭터의 포즈/자세를 정확히 파악하세요 (정면, 측면, 앉은 자세 등)
@@ -537,21 +536,18 @@ ${description ? `연출 설명: ${description}` : ""}
 ${fileList}
 
 요구사항:
-★★★ 가장 중요: 원본 이미지가 반드시 화면에 보여야 합니다! ★★★
-1. **fit_mode: "cover"** 필수! 원본 이미지가 화면을 꽉 채움
-2. **transform.position: {"x": ${fmt.w / 2}, "y": ${fmt.h / 2}}** (정확히 컴포지션 중앙)
-3. **transform.scale: [100, 100], opacity: 100**
-4. 이미지 1장 = 씬 1개, puppet 레이어 1개만 (텍스트/도형 금지!)
-5. **joints 배열**에 각 관절: name, part, x, y, motion, amount, speed, phase
-6. **x, y 좌표는 컴포지션 기준** (가로: 0~${fmt.w}, 0~${fmt.h})
-7. **amount는 2~5** (매우 미세하게! 이미지가 거의 원본 그대로 보여야 함)
-8. **speed는 0.3~0.5** (느리게!)
-9. 관절은 3~6개 (핵심 부위만! 너무 많으면 이미지 왜곡)
-10. fixed_pins로 바닥/발 고정
-11. settings: width=${fmt.w}, height=${fmt.h}, fps=${fpsVal}, total_duration=${dur}
-12. transition_to_next: crossfade (duration 0.5)
-13. entrance: fade_in만 사용
-14. ★ wiggle_elements, bend_zones, expression_links 사용 금지! joints만!
+★★★ 원본 이미지가 반드시 화면에 보여야 합니다! ★★★
+1. fit_mode: "cover", transform.position: {"x": ${fmt.w / 2}, "y": ${fmt.h / 2}}, scale: [100, 100], opacity: 100
+2. 이미지 1장 = 씬 1개, puppet 레이어 1개만 (텍스트/도형 금지!)
+3. **entrance 사용 금지!** entrance를 넣지 마세요
+4. joints 배열에 캐릭터 핵심 부위만 3~5개 (머리, 팔, 꼬리 등)
+5. x, y는 컴포지션 좌표 (가로: 0~${fmt.w}, 0~${fmt.h})
+6. amount 2~5, speed 0.3~0.5 (매우 미세하게!)
+7. fixed_pins로 바닥 고정
+8. settings: width=${fmt.w}, height=${fmt.h}, fps=${fpsVal}, total_duration=${dur}
+9. transition_to_next: crossfade (duration 0.5)
+10. background.color: [1.0, 1.0, 1.0] (흰색 배경)
+11. wiggle_elements, bend_zones, expression_links, rig_mode, action 전부 사용 금지
 
 JSON만 출력.`,
       });
