@@ -93,37 +93,6 @@ format: "vertical" | "horizontal" | "square"
       },
       "layers": [
         {
-          "id": "bg_1",
-          "type": "image",
-          "name": "배경",
-          "three_d": true,
-          "transform": {
-            "position": {"x": 540, "y": 960},
-            "scale": [120, 120],
-            "opacity": 50,
-            "z_position": -500
-          },
-          "image_source": {
-            "file": "파일명.png",
-            "fit_mode": "cover"
-          },
-          "entrance": {
-            "type": "fade_in",
-            "delay": 0,
-            "duration": 1.0,
-            "easing": "ease_out"
-          },
-          "animation": {
-            "type": "ken_burns",
-            "intensity": "subtle",
-            "loop": false
-          },
-          "effects": [
-            {"type": "blur", "params": {"amount": 10}},
-            {"type": "vignette", "params": {"amount": 40}}
-          ]
-        },
-        {
           "id": "title_1",
           "type": "text",
           "name": "메인 제목",
@@ -184,6 +153,33 @@ format: "vertical" | "horizontal" | "square"
             "intensity": "subtle",
             "loop": true
           }
+        },
+        {
+          "id": "bg_1",
+          "type": "image",
+          "name": "배경",
+          "three_d": true,
+          "transform": {
+            "position": {"x": 540, "y": 960},
+            "scale": [120, 120],
+            "opacity": 100,
+            "z_position": -2000
+          },
+          "image_source": {
+            "file": "파일명.png",
+            "fit_mode": "cover"
+          },
+          "entrance": {
+            "type": "fade_in",
+            "delay": 0,
+            "duration": 1.0,
+            "easing": "ease_out"
+          },
+          "animation": {
+            "type": "ken_burns",
+            "intensity": "subtle",
+            "loop": false
+          }
         }
       ],
       "transition_to_next": {
@@ -206,6 +202,12 @@ format: "vertical" | "horizontal" | "square"
     "output_filename": "output.mp4"
   }
 }
+
+=== 배경 이미지 규칙 (필수!) ===
+- 배경으로 쓰는 이미지(id가 bg_로 시작)는 반드시 layers 배열의 **마지막** 항목으로 배치
+- 배경 이미지는 z_position: -2000 (가장 뒤)
+- 배경 이미지에 effects(blur, vignette 등) 절대 금지
+- 배경 이미지 opacity: 100
 
 === 연출 규칙 ===
 - 한 씬에 여러 이미지 동시 배치 (이미지 1장 = 씬 1개 금지!)
