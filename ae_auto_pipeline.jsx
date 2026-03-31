@@ -1667,21 +1667,21 @@ function addToRenderQueue(comp, renderSettings) {
         }
 
         // H.264 템플릿을 찾지 못한 경우 (AE 2023+)
-        // Lossless로 렌더링 후 Media Encoder로 변환하도록 안내
+        // Lossless(AVI)로 렌더링 → 확장자도 .avi로 변경
         if (!templateApplied) {
             try {
                 outputModule.applyTemplate("Lossless");
                 templateApplied = true;
+                format = "avi"; // ★ Lossless는 AVI 형식 → 확장자 변경 필수
             } catch(e2) {}
 
             alert(
                 "안내: AE 2023 이상 버전에서는 H.264 렌더 템플릿이 제거되었습니다.\n\n" +
-                "Lossless(무손실)로 렌더 큐에 추가했습니다.\n\n" +
+                "Lossless(AVI)로 렌더 큐에 추가했습니다.\n\n" +
                 "MP4로 출력하려면:\n" +
                 "1. 컴포지션 > Adobe Media Encoder에 추가 (Ctrl+Alt+M)\n" +
                 "2. Media Encoder에서 H.264 프리셋 선택\n" +
-                "3. 렌더링 시작\n\n" +
-                "또는 렌더 큐에서 바로 렌더링하면 AVI/MOV로 출력됩니다."
+                "3. 렌더링 시작"
             );
         }
     } else if (format === "mov") {
@@ -1705,15 +1705,20 @@ function addToRenderQueue(comp, renderSettings) {
     if (!templateApplied) {
         try {
             outputModule.applyTemplate("Lossless");
+            format = "avi"; // Lossless = AVI 형식
         } catch(e4) {
             // 기본 템플릿 그대로 사용
         }
     }
 
-    // 출력 경로
+    // 출력 경로 (파일명에 이미 확장자가 있으면 그대로, 없으면 format 사용)
+    var outFilename = renderSettings.output_filename || (comp.name + "." + format);
+    // 파일명의 확장자가 실제 format과 다르면 교체 (mp4→avi 등)
+    if (outFilename.match(/\.mp4$/i) && format === "avi") {
+        outFilename = outFilename.replace(/\.mp4$/i, ".avi");
+    }
     var outputPath = new File(
-        Folder.desktop.fsName + "/" +
-        (renderSettings.output_filename || comp.name + "." + format)
+        Folder.desktop.fsName + "/" + outFilename
     );
     outputModule.file = outputPath;
 
