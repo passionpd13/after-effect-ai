@@ -2466,6 +2466,7 @@ function processV2(comp, data, projectFolder) {
     // ★ 항상 처리 결과 로그 표시 (디버그용)
     var summary = "=== 처리 결과 ===\n";
     summary += "씬: " + data.scenes.length + "개\n";
+    summary += "DUIK: " + (DUIK_LOADED ? "✅ 활성 (" + DUIK_API_PATH + ")" : "❌ 미설치 (기본 본 리깅 사용)") + "\n";
     if (errorLog.length > 0) {
         summary += "\n❌ 에러 " + errorLog.length + "개:\n";
         for (var ei = 0; ei < errorLog.length; ei++) {
