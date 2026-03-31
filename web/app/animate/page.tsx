@@ -329,7 +329,10 @@ export default function AnimatePage() {
                       <img src={img.dataUrl} alt="" className="w-16 h-16 rounded object-contain bg-[#222] flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <div className="text-xs truncate">{img.name}</div>
-                        <div className="text-[10px] text-green-400/70 mt-0.5">씬 {i + 1} · {animationDuration}초 · Bone Rig</div>
+                        <div className="text-[10px] mt-0.5">
+                          <span className="text-green-400/70">씬 {i + 1} · {animationDuration}초 · Bone Rig</span>
+                          {(img as {cutoutName?: string}).cutoutName && <span className="text-blue-400/70 ml-1">· 배경 제거됨</span>}
+                        </div>
                       </div>
                       <button onClick={() => removeImage(i)} className="text-red-400/60 hover:text-red-400 text-xs px-2">✕</button>
                     </div>

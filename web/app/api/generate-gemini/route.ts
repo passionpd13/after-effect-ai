@@ -64,6 +64,16 @@ JSX가 joints를 CC Bend It 이펙트로 자동 적용합니다:
 | 머리카락 | hair | wave | 5~10 | 0.3~0.5 |
 | 소품 | accessory | wave | 3~8 | 0.2~0.4 |
 
+=== 값 범위 (매우 중요!) ===
+joint.amount: 5 ~ 25 (CC Bend It 도 단위. 5 이하는 눈에 안 보임!)
+- 호흡(breathe): 5~8도
+- 끄덕임(nod): 8~12도
+- 팔 흔들림(swing): 10~18도
+- 꼬리/머리카락(wave): 15~25도 (가장 활발한 부위)
+joint.speed: 0.3 ~ 1.0 (호흡: 0.3~0.4, 팔: 0.5~0.7, 꼬리: 0.6~0.8)
+joint.phase: 0 ~ 360 (위상 오프셋)
+★ wiggle_elements, expression_links, bend_zones는 사용하지 마세요! joints만 사용!
+
 === 위상(phase) 동기화 ===
 - 왼팔: 0° → 오른팔: 180° (교차)
 - 머리와 몸통: 60~90° 차이
@@ -544,7 +554,7 @@ ${fileList}
 ★★★ 원본 이미지가 반드시 화면에 보여야 합니다! ★★★
 1. fit_mode: "cover", transform.position: {"x": ${fmt.w / 2}, "y": ${fmt.h / 2}}, scale: [100, 100], opacity: 100
 2. 이미지 1장 = 씬 1개, puppet 레이어 1개만 (텍스트/도형 금지!)
-3. **entrance 사용 금지!** entrance를 넣지 마세요
+3. **entrance, animation, exit 사용 금지!** 넣지 마세요
 4. joints 배열에 캐릭터 핵심 부위 3~6개 (머리, 몸통, 팔, 꼬리 등)
 5. ★★★ x, y는 퍼센트(0~100)! 이미지 내 캐릭터 부위의 상대적 위치!
    - 이미지를 잘 보고 머리가 어디에 있는지, 팔이 어디에 있는지 판단
