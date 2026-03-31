@@ -2531,7 +2531,8 @@ function main() {
               "모드: " + (isV2 ? "v2 (멀티 레이어)" : "v1 (클래식)") + "\n" +
               "장면 수: " + data.scenes.length + "\n" +
               "총 길이: " + comp.duration + "초\n" +
-              "해상도: " + comp.width + "x" + comp.height + "\n\n" +
+              "해상도: " + comp.width + "x" + comp.height + "\n" +
+              "DUIK: " + (DUIK_LOADED ? "활성 (" + DUIK_API_PATH + ")" : "미설치 (기본 본 리깅)") + "\n\n" +
               "렌더 큐에서 렌더링을 시작하세요.");
               
     } catch (e) {
