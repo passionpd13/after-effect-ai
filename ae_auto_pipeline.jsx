@@ -755,16 +755,20 @@ function findImageFile(projectFolder, fileName) {
         }
     }
 
-    // 3. 확장자만 다른 파일 찾기 (character_1.png → character_1.jpg 등)
+    // 3. 확장자 없는 파일 찾기 (202603251915.jpg → 202603251915)
     var dotIdx = fileName.lastIndexOf(".");
     var baseName = dotIdx >= 0 ? fileName.slice(0, dotIdx) : fileName;
+    var noExtPath = new File(projectFolder + "/" + baseName);
+    if (noExtPath.exists) return noExtPath;
+
+    // 4. 확장자만 다른 파일 찾기 (character_1.png → character_1.jpg 등)
     var extensions = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff"];
     for (var ei = 0; ei < extensions.length; ei++) {
         var altPath = new File(projectFolder + "/" + baseName + extensions[ei]);
         if (altPath.exists) return altPath;
     }
 
-    // 4. 파일명에 숫자 인덱스가 있으면 패턴 매칭 (character_1 → image_1 등)
+    // 5. 파일명에 숫자 인덱스가 있으면 패턴 매칭 (character_1 → image_1 등)
     var numMatch = baseName.match(/(\d+)/);
     if (numMatch) {
         var num = numMatch[1];
@@ -776,7 +780,7 @@ function findImageFile(projectFolder, fileName) {
         }
     }
 
-    // 5. 못 찾으면 null 반환
+    // 6. 못 찾으면 null 반환
     return null;
 }
 // 색상값을 안전한 [R,G,B] 배열로 변환 (0~1 범위)
