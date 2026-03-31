@@ -7,15 +7,13 @@ import {
   RIG_MODE_LABELS,
   RIG_BODY_PART_LABELS,
   RIG_JOINT_MOTION_LABELS,
+  BONE_HIERARCHY,
 } from "@/lib/schema-data";
 
 interface UploadedImage {
   file: File;
   dataUrl: string;
   name: string;
-  cutoutDataUrl?: string; // 배경 제거된 이미지
-  cutoutBlob?: Blob;
-  cutoutName?: string;
 }
 
 export default function AnimatePage() {
@@ -24,8 +22,6 @@ export default function AnimatePage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState("");
   const [isDragging, setIsDragging] = useState(false);
-  const [bgRemoveProgress, setBgRemoveProgress] = useState("");
-  const [isBgRemoving, setIsBgRemoving] = useState(false);
 
   // API Keys
   const [geminiKey, setGeminiKey] = useState("");
@@ -63,20 +59,24 @@ export default function AnimatePage() {
     } catch {}
   }, [geminiKey, geminiModel]);
 
-  // 파일 바이트에서 실제 이미지 포맷 감지 (magic number 기반)
-  const detectRealFormat = useCallback((arrayBuffer: ArrayBuffer): string => {
-    const bytes = new Uint8Array(arrayBuffer.slice(0, 4));
-    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) return ".png";
-    if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) return ".jpg";
-    if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return ".gif";
-    if (bytes[0] === 0x42 && bytes[1] === 0x4D) return ".bmp";
-    if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) return ".webp";
-    return ".png"; // 감지 실패 시 기본값
+  // MIME 타입으로 실제 확장자 결정
+  const mimeToExt = useCallback((mimeType: string): string => {
+    const map: Record<string, string> = {
+      "image/png": ".png",
+      "image/jpeg": ".jpg",
+      "image/jpg": ".jpg",
+      "image/webp": ".webp",
+      "image/gif": ".gif",
+      "image/bmp": ".bmp",
+      "image/tiff": ".tiff",
+    };
+    return map[mimeType] || ".png";
   }, []);
 
-  // 파일명 정리 (실제 파일 바이트 기반 확장자 사용)
-  const sanitizeFileName = useCallback((name: string, index: number, realExt: string): string => {
+  // 파일명 정리 (실제 MIME 타입 기반 확장자 사용)
+  const sanitizeFileName = useCallback((name: string, index: number, actualMime: string): string => {
     const lastDot = name.lastIndexOf(".");
+    const ext = mimeToExt(actualMime);
     const base = lastDot >= 0 ? name.slice(0, lastDot) : name;
     const cleaned = base
       .replace(/[가-힣ㄱ-ㅎㅏ-ㅣ]/g, "")
@@ -84,8 +84,8 @@ export default function AnimatePage() {
       .replace(/[^a-zA-Z0-9_\-]/g, "")
       .replace(/_+/g, "_")
       .replace(/^_|_$/g, "");
-    return (cleaned || `character_${index + 1}`) + realExt;
-  }, []);
+    return (cleaned || `character_${index + 1}`) + ext;
+  }, [mimeToExt]);
 
   const handleImageUpload = useCallback((files: FileList | null) => {
     if (!files) return;
@@ -96,136 +96,24 @@ export default function AnimatePage() {
       const safeIndex = images.length + i;
       newImages.push(
         new Promise((resolve) => {
-          // ★ 파일 바이트를 직접 읽어서 실제 포맷 감지 (browser MIME 무시)
-          const bufReader = new FileReader();
-          bufReader.onload = (bufEvent) => {
-            const realExt = detectRealFormat(bufEvent.target?.result as ArrayBuffer);
-            const safeName = sanitizeFileName(file.name, safeIndex, realExt);
-            const urlReader = new FileReader();
-            urlReader.onload = (urlEvent) => {
-              resolve({
-                file,
-                dataUrl: urlEvent.target?.result as string,
-                name: safeName,
-              });
-            };
-            urlReader.readAsDataURL(file);
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            resolve({
+              file,
+              dataUrl: e.target?.result as string,
+              name: sanitizeFileName(file.name, safeIndex, file.type),
+            });
           };
-          bufReader.readAsArrayBuffer(file.slice(0, 8)); // 처음 8바이트만 읽기
+          reader.readAsDataURL(file);
         })
       );
     }
     Promise.all(newImages).then((imgs) => setImages((prev) => [...prev, ...imgs]));
-  }, [images.length, sanitizeFileName, detectRealFormat]);
+  }, [images.length, sanitizeFileName]);
 
   const removeImage = (index: number) => {
     setImages((prev) => prev.filter((_, i) => i !== index));
   };
-
-  // 배경 제거 (Canvas 기반 - 가장자리 flood fill로 배경 감지)
-  const removeWhiteBg = useCallback((imgElement: HTMLImageElement): Promise<Blob> => {
-    return new Promise((resolve) => {
-      const canvas = document.createElement("canvas");
-      const w = imgElement.naturalWidth;
-      const h = imgElement.naturalHeight;
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d")!;
-      ctx.drawImage(imgElement, 0, 0);
-      const imageData = ctx.getImageData(0, 0, w, h);
-      const data = imageData.data;
-
-      // 배경 색상 감지: 네 모서리 색상 평균
-      const corners = [
-        0, // top-left
-        (w - 1) * 4, // top-right
-        (h - 1) * w * 4, // bottom-left
-        ((h - 1) * w + (w - 1)) * 4, // bottom-right
-      ];
-      let bgR = 0, bgG = 0, bgB = 0;
-      for (const idx of corners) {
-        bgR += data[idx]; bgG += data[idx + 1]; bgB += data[idx + 2];
-      }
-      bgR = Math.round(bgR / 4); bgG = Math.round(bgG / 4); bgB = Math.round(bgB / 4);
-
-      // Flood fill from edges: 배경과 비슷한 색상(tolerance 내)인 픽셀을 투명으로
-      const tolerance = 40; // 색상 허용 오차
-      const visited = new Uint8Array(w * h);
-      const queue: number[] = [];
-
-      const isBgColor = (idx: number) => {
-        const r = data[idx * 4], g = data[idx * 4 + 1], b = data[idx * 4 + 2];
-        return Math.abs(r - bgR) + Math.abs(g - bgG) + Math.abs(b - bgB) < tolerance * 3;
-      };
-
-      // 테두리 픽셀을 시작점으로 추가
-      for (let x = 0; x < w; x++) {
-        if (isBgColor(x)) queue.push(x);
-        const bottom = (h - 1) * w + x;
-        if (isBgColor(bottom)) queue.push(bottom);
-      }
-      for (let y = 1; y < h - 1; y++) {
-        if (isBgColor(y * w)) queue.push(y * w);
-        const right = y * w + w - 1;
-        if (isBgColor(right)) queue.push(right);
-      }
-
-      // BFS flood fill
-      while (queue.length > 0) {
-        const pos = queue.pop()!;
-        if (visited[pos]) continue;
-        if (!isBgColor(pos)) continue;
-        visited[pos] = 1;
-        data[pos * 4 + 3] = 0; // 투명으로
-
-        const x = pos % w, y = Math.floor(pos / w);
-        if (x > 0) queue.push(pos - 1);
-        if (x < w - 1) queue.push(pos + 1);
-        if (y > 0) queue.push(pos - w);
-        if (y < h - 1) queue.push(pos + w);
-      }
-
-      ctx.putImageData(imageData, 0, 0);
-      canvas.toBlob((blob) => resolve(blob!), "image/png");
-    });
-  }, []);
-
-  const handleRemoveBg = useCallback(async () => {
-    if (images.length === 0) return;
-    setIsBgRemoving(true);
-
-    try {
-      const updatedImages = [...images];
-      for (let i = 0; i < updatedImages.length; i++) {
-        setBgRemoveProgress(`배경 제거 중... (${i + 1}/${updatedImages.length})`);
-        const img = updatedImages[i];
-        if (img.cutoutDataUrl) continue;
-
-        // 이미지 로드
-        const imgEl = await new Promise<HTMLImageElement>((resolve) => {
-          const el = new Image();
-          el.onload = () => resolve(el);
-          el.src = img.dataUrl;
-        });
-
-        const blob = await removeWhiteBg(imgEl);
-        const cutoutName = img.name.replace(/\.[^.]+$/, "_cutout.png");
-        const dataUrl = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (e) => resolve(e.target?.result as string);
-          reader.readAsDataURL(blob);
-        });
-
-        updatedImages[i] = { ...img, cutoutDataUrl: dataUrl, cutoutBlob: blob, cutoutName };
-      }
-      setImages(updatedImages);
-      setBgRemoveProgress("완료!");
-    } catch (e) {
-      setError(`배경 제거 실패: ${(e as Error).message}`);
-      setBgRemoveProgress("");
-    }
-    setIsBgRemoving(false);
-  }, [images, removeWhiteBg]);
 
   // AI 자동 생성
   const handleGenerate = async () => {
@@ -240,19 +128,14 @@ export default function AnimatePage() {
     setIsGenerating(true);
     setError("");
 
-    const hasCutouts = images.some((img) => img.cutoutName);
     const allImages = images.map((img) => ({
       name: img.name,
-      cutout_name: img.cutoutName || "",
       data_url: img.dataUrl,
       image_type: "character",
     }));
 
     try {
       const rigDesc = description || "";
-      const cutoutHint = hasCutouts
-        ? "\n★ 2레이어 모드: 각 이미지에 cutout_file이 있습니다. image_source에 cutout_file 필드를 추가해주세요."
-        : "";
       const actionHint = actionPreset ? `\n캐릭터 액션: ${RIG_ACTION_LABELS[actionPreset] || actionPreset}` : "";
       const modeHint = rigMode === "action" && actionPreset ? `\nrig_mode: "action", action: "${actionPreset}" 사용` : `\nrig_mode: "${rigMode}" 사용`;
 
@@ -265,7 +148,7 @@ export default function AnimatePage() {
           images: allImages,
           mode: "animate",
           style: "cinematic",
-          description: rigDesc + cutoutHint + actionHint + modeHint,
+          description: rigDesc + actionHint + modeHint,
           total_duration: animationDuration * images.length,
           scene_duration: animationDuration,
           format: "horizontal",
@@ -305,23 +188,32 @@ export default function AnimatePage() {
 
     for (const img of images) {
       folder.file(img.name, img.file);
-      // 배경 제거된 컷아웃도 포함
-      if (img.cutoutBlob && img.cutoutName) {
-        folder.file(img.cutoutName, img.cutoutBlob);
-      }
     }
 
     folder.file("사용법.txt",
-      "=== AE 캐릭터 리깅 애니메이션 ===\n\n" +
-      "1. After Effects 실행\n" +
+      "=== AE 캐릭터 본 리깅 애니메이션 ===\n\n" +
+      "[ 기본 사용법 ]\n" +
+      "1. After Effects 실행 (CC 2020 이상 권장)\n" +
       "2. 파일(F) > 스크립트(T) > 스크립트 파일 실행...\n" +
       "3. ae_auto_pipeline.jsx 선택\n" +
-      "4. JSON 파일 선택\n" +
-      "5. 캐릭터 리깅 애니메이션 자동 생성!\n\n" +
-      "구조:\n" +
-      "- 원본 이미지: 정적 배경 레이어\n" +
-      "- _cutout.png: 캐릭터만 추출 (CC Bend It 적용)\n\n" +
-      "MP4 출력: 컴포지션 > Adobe Media Encoder에 추가 (Ctrl+Alt+M)\n"
+      "4. 이 폴더의 JSON 파일 선택\n" +
+      "5. 본(Bone) 리깅된 캐릭터가 자동으로 움직입니다!\n\n" +
+      "[ 생성되는 구조 ]\n" +
+      "- BONE_head, BONE_torso, BONE_right_arm... (Null 레이어 = 뼈대)\n" +
+      "- 캐릭터 이미지 레이어 (CC Bend It 이펙트가 본의 회전을 따라감)\n" +
+      "- 본끼리 부모-자식 관계: 몸통 움직이면 머리/팔이 자동으로 따라감\n\n" +
+      "[ AE에서 수동 조정 ]\n" +
+      "- BONE_xxx Null 레이어를 선택 → Rotation/Position 키프레임 수정\n" +
+      "- CC Bend It의 Start/End 점을 이동하면 벤드 영역 변경\n" +
+      "- 본의 Expression을 삭제하고 직접 키프레임 애니메이션 가능\n\n" +
+      "[ DUIK Bassel 연동 (선택사항, 더 고급) ]\n" +
+      "- DUIK 설치: rxlaboratory.org/tools/duik-angela\n" +
+      "- 설치 후 JSX 실행 시 자동 감지됨\n" +
+      "- DUIK의 IK/FK, Walk Cycle 등 고급 기능 활용 가능\n\n" +
+      "[ 출력 ]\n" +
+      "- MP4: 컴포지션 > Adobe Media Encoder에 추가 (Ctrl+Alt+M)\n" +
+      "- GIF: Media Encoder에서 애니메이션 GIF 선택\n" +
+      "- 프레임: 컴포지션 > 프레임을 파일로 저장\n"
     );
 
     const blob = await zip.generateAsync({ type: "blob" });
@@ -343,7 +235,7 @@ export default function AnimatePage() {
             <span className="text-gradient">AI 캐릭터 리깅 애니메이션</span>
           </h1>
           <p className="text-white/50 text-sm">
-            일러스트/만화 캐릭터의 관절을 AI가 자동 분석하여 자연스럽게 움직이는 애니메이션을 생성합니다
+            DUIK-Style 본(Bone) 리깅으로 캐릭터의 관절을 AI가 자동 분석 → 부모-자식 계층 구조의 자연스러운 애니메이션
           </p>
         </div>
 
@@ -434,35 +326,17 @@ export default function AnimatePage() {
                 <div className="mt-3 space-y-2">
                   {images.map((img, i) => (
                     <div key={i} className="flex items-center gap-3 bg-white/5 rounded-lg p-2">
-                      <img src={img.cutoutDataUrl || img.dataUrl} alt="" className="w-16 h-16 rounded object-contain bg-[#222] flex-shrink-0" />
+                      <img src={img.dataUrl} alt="" className="w-16 h-16 rounded object-contain bg-[#222] flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <div className="text-xs truncate">{img.name}</div>
                         <div className="text-[10px] mt-0.5">
-                          <span className="text-green-400/70">씬 {i + 1} · {animationDuration}초</span>
-                          {img.cutoutName && <span className="text-blue-400/70 ml-1">· 배경 제거됨</span>}
+                          <span className="text-green-400/70">씬 {i + 1} · {animationDuration}초 · Bone Rig</span>
+                          {(img as {cutoutName?: string}).cutoutName && <span className="text-blue-400/70 ml-1">· 배경 제거됨</span>}
                         </div>
                       </div>
                       <button onClick={() => removeImage(i)} className="text-red-400/60 hover:text-red-400 text-xs px-2">✕</button>
                     </div>
                   ))}
-
-                  {/* 배경 제거 버튼 */}
-                  <button
-                    onClick={handleRemoveBg}
-                    disabled={isBgRemoving || images.every((img) => img.cutoutName)}
-                    className="w-full py-2.5 rounded-lg text-xs font-medium transition-all bg-blue-600/20 border border-blue-500/30 hover:bg-blue-600/30 text-blue-400 disabled:opacity-40"
-                  >
-                    {isBgRemoving ? (
-                      <span>{bgRemoveProgress}</span>
-                    ) : images.every((img) => img.cutoutName) ? (
-                      "배경 제거 완료"
-                    ) : (
-                      "배경 제거 (캐릭터만 추출)"
-                    )}
-                  </button>
-                  <p className="text-[10px] text-white/30 text-center">
-                    가장자리 배경색 감지 · 무료 · 즉시 처리 · 흰 배경 웹툰에 최적
-                  </p>
                 </div>
               )}
             </div>
@@ -554,15 +428,20 @@ export default function AnimatePage() {
             <div className="card-glass p-5">
               <h2 className="text-base font-bold mb-3">관절 리깅 시스템</h2>
 
-              {/* Body Parts */}
+              {/* Body Parts with hierarchy info */}
               <div className="mb-3">
-                <h3 className="text-[11px] text-white/60 font-medium mb-2">지원 신체 부위</h3>
+                <h3 className="text-[11px] text-white/60 font-medium mb-2">지원 신체 부위 (본 계층)</h3>
                 <div className="flex flex-wrap gap-1.5">
-                  {Object.entries(RIG_BODY_PART_LABELS).map(([key, label]) => (
-                    <span key={key} className="bg-white/5 rounded px-2 py-0.5 text-[10px] text-white/50">
-                      {label}
-                    </span>
-                  ))}
+                  {Object.entries(RIG_BODY_PART_LABELS).map(([key, label]) => {
+                    const parent = BONE_HIERARCHY[key];
+                    return (
+                      <span key={key} className="bg-white/5 rounded px-2 py-0.5 text-[10px] text-white/50"
+                            title={parent ? `부모: ${RIG_BODY_PART_LABELS[parent] || parent}` : "루트 본"}>
+                        {label}
+                        {parent && <span className="text-white/20 ml-0.5">← {RIG_BODY_PART_LABELS[parent] || parent}</span>}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -579,10 +458,14 @@ export default function AnimatePage() {
                 </div>
               </div>
 
-              {/* Phase Explanation */}
-              <div className="bg-green-500/5 border border-green-500/15 rounded-lg p-2.5 text-[10px] text-white/50">
-                <span className="text-green-400 font-medium">Phase(위상)</span>으로 관절이 연동됩니다.
-                좌우 대칭 부위는 180° 차이, 연결 부위는 30~90° 차이로 자연스러운 동작을 만듭니다.
+              {/* Key concepts */}
+              <div className="space-y-1.5">
+                <div className="bg-green-500/5 border border-green-500/15 rounded-lg p-2.5 text-[10px] text-white/50">
+                  <span className="text-green-400 font-medium">Phase(위상)</span>: 좌우 대칭 부위 180° 차이, 연결 부위 30~90° 차이 → 자연스러운 연동
+                </div>
+                <div className="bg-blue-500/5 border border-blue-500/15 rounded-lg p-2.5 text-[10px] text-white/50">
+                  <span className="text-blue-400 font-medium">좌표 시스템</span>: 퍼센트(0~100%) 기반 → 머리 x:50 y:12 = &quot;상단 가운데&quot;. 해상도에 무관하게 정확
+                </div>
               </div>
             </div>
           </div>
@@ -643,32 +526,121 @@ export default function AnimatePage() {
               <h2 className="text-base font-bold mb-3">사용법</h2>
               <div className="space-y-2 text-[11px] text-white/60">
                 <div className="flex items-start gap-2">
-                  <span className="text-green-400 font-bold">1.</span>
+                  <span className="text-green-400 font-bold shrink-0">1.</span>
                   <span>캐릭터 일러스트/만화 이미지 업로드</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="text-green-400 font-bold">2.</span>
-                  <span>리깅 모드 선택 (간단/고급/액션)</span>
+                  <span className="text-green-400 font-bold shrink-0">2.</span>
+                  <span>리깅 모드 선택 + 연출 설명 입력 (선택)</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="text-green-400 font-bold">3.</span>
-                  <span>&quot;캐릭터 리깅 애니메이션 생성&quot; 클릭</span>
+                  <span className="text-green-400 font-bold shrink-0">3.</span>
+                  <span>&quot;캐릭터 리깅 애니메이션 생성&quot; 클릭 → AI가 관절 위치를 자동 분석</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="text-green-400 font-bold">4.</span>
-                  <span>ZIP 다운로드 → 압축 해제</span>
+                  <span className="text-green-400 font-bold shrink-0">4.</span>
+                  <span>ZIP 다운로드 → 한 폴더에 압축 해제</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="text-green-400 font-bold">5.</span>
-                  <span>After Effects → 파일 → 스크립트 실행 → JSX 선택</span>
+                  <span className="text-green-400 font-bold shrink-0">5.</span>
+                  <span>After Effects → 파일 → 스크립트 실행 → <strong className="text-white/80">ae_auto_pipeline.jsx</strong> 선택</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="text-green-400 font-bold">6.</span>
-                  <span>JSON 선택 → 관절이 리깅된 캐릭터가 자동으로 움직입니다!</span>
+                  <span className="text-green-400 font-bold shrink-0">6.</span>
+                  <span>JSON 선택 → 본(Bone) 리깅된 캐릭터가 자동으로 움직입니다!</span>
                 </div>
               </div>
-              <div className="mt-3 bg-green-500/10 border border-green-500/20 rounded-lg p-2.5 text-[10px] text-green-400/80">
-                배경 투명 PNG 권장 | 관절별 독립 모션 | phase(위상)으로 자연스러운 연동 | 최대 8개 CC Bend It 스태킹
+            </div>
+
+            {/* Bone Rigging System Explanation */}
+            <div className="card-glass p-5">
+              <h2 className="text-base font-bold mb-3">본(Bone) 리깅 시스템</h2>
+              <p className="text-[11px] text-white/50 mb-3">
+                DUIK Bassel 방식의 본 계층 구조를 자동 생성합니다. 각 관절은 Null 레이어(뼈대)로 생성되며,
+                부모-자식 관계로 연결되어 몸통이 움직이면 머리/팔이 자연스럽게 따라갑니다.
+              </p>
+
+              {/* Bone Hierarchy Visual */}
+              <div className="bg-black/30 rounded-lg p-3 mb-3 font-mono text-[10px] leading-relaxed">
+                <div className="text-yellow-400">BONE_hips <span className="text-white/30">(루트)</span></div>
+                <div className="text-green-400 ml-3">├── BONE_torso <span className="text-white/30">(호흡)</span></div>
+                <div className="text-green-400 ml-6">├── BONE_chest</div>
+                <div className="text-blue-400 ml-9">├── BONE_neck → BONE_head <span className="text-white/30">(끄덕임)</span></div>
+                <div className="text-yellow-300 ml-9">├── BONE_left_arm <span className="text-white/30">(흔들림 0°)</span></div>
+                <div className="text-yellow-300 ml-9">└── BONE_right_arm <span className="text-white/30">(흔들림 180°)</span></div>
+                <div className="text-purple-400 ml-3">├── BONE_left_leg</div>
+                <div className="text-purple-400 ml-3">├── BONE_right_leg</div>
+                <div className="text-pink-400 ml-3">└── BONE_tail <span className="text-white/30">(물결)</span></div>
+              </div>
+
+              {/* How it works */}
+              <div className="space-y-2 text-[10px]">
+                <div className="flex items-start gap-2">
+                  <span className="text-green-400 font-bold shrink-0">A</span>
+                  <span className="text-white/50"><strong className="text-white/80">Null 레이어</strong>가 뼈대 역할 → 각각 Rotation/Position에 Expression 자동 적용</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-green-400 font-bold shrink-0">B</span>
+                  <span className="text-white/50"><strong className="text-white/80">부모-자식 연결</strong> → chest 본이 회전하면 head, arm 본이 함께 움직임</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-green-400 font-bold shrink-0">C</span>
+                  <span className="text-white/50"><strong className="text-white/80">CC Bend It</strong>가 본의 회전값을 읽어서 이미지를 자연스럽게 변형</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-green-400 font-bold shrink-0">D</span>
+                  <span className="text-white/50"><strong className="text-white/80">좌표는 퍼센트(%)</strong> → AI가 &quot;머리=상단50%&quot; 식으로 인식 → 정확도 UP</span>
+                </div>
+              </div>
+
+              {/* AE Manual Editing Tips */}
+              <div className="mt-3 bg-blue-500/10 border border-blue-500/20 rounded-lg p-2.5 text-[10px] text-blue-300/80">
+                <strong>AE에서 수동 조정:</strong> BONE_xxx Null 레이어 선택 →
+                R(Rotation), P(Position) 키프레임 직접 수정 가능.
+                Expression 삭제 후 수동 키프레임 애니메이션도 OK!
+              </div>
+            </div>
+
+            {/* DUIK Integration */}
+            <div className="card-glass p-5">
+              <h2 className="text-base font-bold mb-3">DUIK Bassel 연동 (선택)</h2>
+              <p className="text-[11px] text-white/50 mb-3">
+                DUIK가 설치되어 있으면 IK/FK, Walk Cycle 등 고급 기능을 활용할 수 있습니다.
+                설치 없이도 본 리깅은 정상 작동합니다.
+              </p>
+              <div className="space-y-2 text-[10px]">
+                <div className="flex items-start gap-2">
+                  <span className="text-purple-400 font-bold shrink-0">1.</span>
+                  <span className="text-white/50">
+                    <a href="https://rxlaboratory.org/tools/duik-angela/" target="_blank" rel="noopener noreferrer"
+                       className="text-purple-400 underline hover:text-purple-300">
+                      DUIK Angela (무료) 다운로드
+                    </a> → After Effects에 설치
+                  </span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-purple-400 font-bold shrink-0">2.</span>
+                  <span className="text-white/50">JSX 실행 시 자동으로 DUIK 설치 감지</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-purple-400 font-bold shrink-0">3.</span>
+                  <span className="text-white/50">BONE_xxx Null 레이어를 선택 → DUIK 패널에서 IK 적용</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-purple-400 font-bold shrink-0">4.</span>
+                  <span className="text-white/50">팔/다리에 IK → 손/발 컨트롤러만 움직이면 관절이 자동 구부러짐</span>
+                </div>
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]">
+                <div className="bg-white/5 rounded-lg p-2">
+                  <div className="text-green-400 font-medium mb-1">기본 (DUIK 없이)</div>
+                  <div className="text-white/40">본 계층 + CC Bend It + Expression 사인파. 자동 생성, 즉시 사용 가능</div>
+                </div>
+                <div className="bg-white/5 rounded-lg p-2">
+                  <div className="text-purple-400 font-medium mb-1">고급 (DUIK 설치)</div>
+                  <div className="text-white/40">+ IK/FK 전환 + Walk Cycle + Bezier IK + 컨트롤러 조작</div>
+                </div>
               </div>
             </div>
           </div>

@@ -106,3 +106,46 @@ export const RIG_MODES = ["simple", "advanced", "action"] as const;
 export const RIG_MODE_LABELS: Record<string, string> = {
   simple: "간단 (기본 호흡+끄덕임)", advanced: "고급 (관절별 상세 설정)", action: "액션 (프리셋 동작)",
 };
+
+// === Bone Hierarchy (DUIK-style) ===
+// 부모-자식 관계 정의: 몸통 움직이면 머리/팔이 따라감
+export const BONE_HIERARCHY: Record<string, string | null> = {
+  hips: null,
+  torso: "hips",
+  chest: "torso",
+  neck: "chest",
+  head: "neck",
+  left_arm: "chest",
+  right_arm: "chest",
+  left_hand: "left_arm",
+  right_hand: "right_arm",
+  left_leg: "hips",
+  right_leg: "hips",
+  tail: "hips",
+  hair: "head",
+  accessory: "torso",
+  weapon: "right_hand",
+  cape: "chest",
+  waist: "hips",
+};
+
+// 퍼센트 좌표 기본값 (정면 서있는 캐릭터)
+export const DEFAULT_BONE_POSITIONS: Record<string, { x: number; y: number }> = {
+  head: { x: 50, y: 12 },
+  neck: { x: 50, y: 20 },
+  chest: { x: 50, y: 30 },
+  torso: { x: 50, y: 40 },
+  hips: { x: 50, y: 52 },
+  waist: { x: 50, y: 48 },
+  left_arm: { x: 33, y: 33 },
+  right_arm: { x: 67, y: 33 },
+  left_hand: { x: 28, y: 52 },
+  right_hand: { x: 72, y: 52 },
+  left_leg: { x: 43, y: 72 },
+  right_leg: { x: 57, y: 72 },
+  tail: { x: 30, y: 58 },
+  hair: { x: 50, y: 8 },
+  accessory: { x: 60, y: 45 },
+  weapon: { x: 75, y: 48 },
+  cape: { x: 50, y: 28 },
+};

@@ -6,56 +6,78 @@ const ANIMATE_SYSTEM_PROMPT = `당신은 캐릭터 리깅/애니메이션 전문
 ★★★ 가장 중요: 움직임은 **극도로 미세**해야 합니다! ★★★
 - 이것은 "살아있는 일러스트"입니다. 화려한 애니메이션이 아닙니다!
 - 원본 그림이 거의 그대로 보이면서 숨쉬는 듯, 살짝 움직이는 느낌
-- 과한 움직임 = 이미지 왜곡 = 실패
 - 텍스트/도형 레이어 금지. 오직 캐릭터 이미지 + 미세한 관절 리깅만
 
-=== 리깅 시스템 구조 ===
-캐릭터의 각 신체 부위를 **관절(joint)**로 정의하고, 관절별로 독립적인 모션을 부여합니다.
+=== ★★★ 좌표 시스템: 퍼센트(%) 사용! ★★★ ===
+관절의 x, y 좌표는 **이미지 내 위치를 퍼센트(0~100)로 지정**합니다.
+JSX가 자동으로 실제 픽셀 좌표로 변환합니다.
 
-JSX가 joints를 분석하여 자동 적용합니다:
-- breathe → Scale 사인파 (미세한 호흡)
-- nod → Rotation 사인파 (부드러운 끄덕임)
-- swing/sway → Position 사인파 + CC Bend It (미세한 흔들림)
-- wave/bend → CC Bend It (부위별 미세 구부림)
-- bob → Position Y 사인파 (미세한 위아래)
-- shake → Wiggle (떨림 - scared/angry 전용)
+- x: 0 = 이미지 왼쪽 끝, 50 = 가운데, 100 = 오른쪽 끝
+- y: 0 = 이미지 위쪽 끝, 50 = 가운데, 100 = 아래쪽 끝
 
-=== 이미지 분석 방법 ===
-캐릭터 이미지를 분석하여 다음 부위를 식별하세요:
+=== 포즈별 관절 위치 가이드 (퍼센트) ===
 
-| 신체 부위 | part 값 | 추천 motion | amount | speed | 설명 |
-|-----------|---------|------------|--------|-------|------|
-| 머리 | head | nod | 8~12 | 0.4~0.6 | 끄덕임. CC Bend It 도 단위 |
-| 몸통 | torso | breathe | 5~8 | 0.3~0.4 | 호흡. 느리고 부드럽게 |
-| 팔 | left_arm/right_arm | swing | 10~18 | 0.4~0.6 | 팔 흔들림 |
-| 꼬리 | tail | wave | 15~25 | 0.5~0.8 | 물결. 가장 활발한 부위 |
-| 소품/나무 | accessory | wave | 5~10 | 0.3~0.5 | 바람에 흔들림 |
+**정면 서있는 캐릭터:**
+| 부위 | x (%) | y (%) | 설명 |
+|------|-------|-------|------|
+| 머리 정수리 | 50 | 5~10 | 머리 꼭대기 |
+| 얼굴/턱 | 50 | 12~18 | 얼굴 중심 |
+| 목 | 50 | 18~22 | 머리-몸통 연결부 |
+| 가슴/몸통 | 50 | 30~40 | 상체 중심 |
+| 왼팔 | 30~35 | 30~40 | 캐릭터의 왼쪽 |
+| 오른팔 | 65~70 | 30~40 | 캐릭터의 오른쪽 |
+| 왼손 | 25~30 | 50~55 | 팔 끝 |
+| 오른손 | 70~75 | 50~55 | 팔 끝 |
+| 허리 | 50 | 50~55 | 상하체 연결부 |
+| 왼다리 | 40~45 | 70~75 | |
+| 오른다리 | 55~60 | 70~75 | |
+| 왼발 | 40 | 90~95 | 바닥 고정점 |
+| 오른발 | 60 | 90~95 | 바닥 고정점 |
 
-=== amount 가이드 (CC Bend It 도 단위!) ===
-★ CC Bend It의 amount는 도(degree) 단위! 5 이하는 눈에 안 보입니다!
+**앉아있는 캐릭터:** y 비율을 위로 올림 (머리 10~15%, 몸통 35~45%, 바닥 70~80%)
+**반신샷 (상반신만):** y를 전체적으로 아래로 (머리 15~25%, 가슴 45~55%, 허리 75~85%)
+**동물/4족:** 머리 x를 왼쪽/오른쪽으로 치우침, 꼬리는 반대편
+
+★★★ 이미지를 보고 캐릭터가 실제로 어디에 있는지 판단하세요! ★★★
+- 캐릭터가 이미지 중앙에 있으면 x=50
+- 캐릭터가 왼쪽에 치우쳐 있으면 x=30~40
+- 캐릭터가 오른쪽에 치우쳐 있으면 x=60~70
+- 캐릭터가 이미지 상단에 있으면 y 값들을 전체적으로 낮게
+- 캐릭터가 이미지 하단에 있으면 y 값들을 전체적으로 높게
+
+=== 리깅 시스템 ===
+JSX가 joints를 CC Bend It 이펙트로 자동 적용합니다:
+- breathe → 미세한 호흡 (몸통용)
+- nod → 부드러운 끄덕임 (머리용)
+- swing → 좌우 흔들림 (팔용)
+- wave → 물결 (꼬리/머리카락/소품용)
+- shake → 떨림 (scared/angry 전용)
+
+=== 부위별 추천 설정 ===
+| 부위 | part 값 | motion | amount | speed |
+|------|---------|--------|--------|-------|
+| 머리 | head | nod | 8~12 | 0.3~0.5 |
+| 몸통 | torso | breathe | 5~8 | 0.25~0.4 |
+| 팔 | left_arm/right_arm | swing | 8~15 | 0.3~0.5 |
+| 손 | left_hand/right_hand | wave | 5~10 | 0.4~0.6 |
+| 꼬리 | tail | wave | 10~20 | 0.4~0.7 |
+| 머리카락 | hair | wave | 5~10 | 0.3~0.5 |
+| 소품 | accessory | wave | 3~8 | 0.2~0.4 |
+
+=== 값 범위 (매우 중요!) ===
+joint.amount: 5 ~ 25 (CC Bend It 도 단위. 5 이하는 눈에 안 보임!)
 - 호흡(breathe): 5~8도
 - 끄덕임(nod): 8~12도
 - 팔 흔들림(swing): 10~18도
 - 꼬리/머리카락(wave): 15~25도 (가장 활발한 부위)
-- 떨림(shake): 5~10도
-
-=== speed 가이드 ===
-★ 느릴수록 자연스럽습니다!
-- 호흡: 0.25~0.4 (4~3초에 1번 호흡)
-- 끄덕임: 0.3~0.6
-- 꼬리: 0.4~0.8
-- 절대 1.0 이상 사용하지 마세요 (scared/shake 제외)
+joint.speed: 0.3 ~ 1.0 (호흡: 0.3~0.4, 팔: 0.5~0.7, 꼬리: 0.6~0.8)
+joint.phase: 0 ~ 360 (위상 오프셋)
+★ wiggle_elements, expression_links, bend_zones는 사용하지 마세요! joints만 사용!
 
 === 위상(phase) 동기화 ===
 - 왼팔: 0° → 오른팔: 180° (교차)
 - 머리와 몸통: 60~90° 차이
 - 꼬리: 30~60° 씩 증가 (파동)
-
-=== 값 범위 (매우 중요!) ===
-joint.amount: 5 ~ 25 (CC Bend It 도 단위. 머리/팔: 8~15, 꼬리: 15~25, 호흡: 5~8)
-joint.speed: 0.3 ~ 1.0 (반복 속도. 호흡: 0.3~0.4, 팔: 0.5~0.7, 꼬리: 0.6~0.8)
-joint.phase: 0 ~ 360 (위상 오프셋)
-★ wiggle_elements, expression_links, bend_zones는 사용하지 마세요! joints만 사용!
 
 === JSON 구조 ===
 {
@@ -90,15 +112,15 @@ joint.phase: 0 ~ 360 (위상 오프셋)
           "image_source": { "file": "실제파일명.확장자", "fit_mode": "cover" },
           "transform": { "position": {"x": 960, "y": 540}, "scale": [100, 100], "opacity": 100 },
           "joints": [
-            { "name": "head", "part": "head", "x": 540, "y": 120, "motion": "nod", "amount": 10, "speed": 0.5, "phase": 90 },
-            { "name": "body", "part": "torso", "x": 540, "y": 350, "motion": "breathe", "amount": 6, "speed": 0.35, "phase": 0 },
-            { "name": "right_arm", "part": "right_arm", "x": 700, "y": 300, "motion": "swing", "amount": 12, "speed": 0.5, "phase": 0 },
-            { "name": "left_arm", "part": "left_arm", "x": 380, "y": 300, "motion": "swing", "amount": 12, "speed": 0.5, "phase": 180 },
-            { "name": "tail", "part": "tail", "x": 350, "y": 500, "motion": "wave", "amount": 18, "speed": 0.6, "phase": 0 }
+            { "name": "head", "part": "head", "x": 50, "y": 12, "motion": "nod", "amount": 10, "speed": 0.35, "phase": 90 },
+            { "name": "body", "part": "torso", "x": 50, "y": 38, "motion": "breathe", "amount": 6, "speed": 0.3, "phase": 0 },
+            { "name": "right_arm", "part": "right_arm", "x": 68, "y": 35, "motion": "swing", "amount": 12, "speed": 0.4, "phase": 0 },
+            { "name": "left_arm", "part": "left_arm", "x": 32, "y": 35, "motion": "swing", "amount": 12, "speed": 0.4, "phase": 180 },
+            { "name": "tail", "part": "tail", "x": 25, "y": 55, "motion": "wave", "amount": 15, "speed": 0.5, "phase": 0 }
           ],
           "fixed_pins": [
-            { "name": "feet_left", "x": 480, "y": 700 },
-            { "name": "feet_right", "x": 600, "y": 700 }
+            { "name": "feet_left", "x": 42, "y": 92 },
+            { "name": "feet_right", "x": 58, "y": 92 }
           ]
         }
       ],
@@ -111,38 +133,33 @@ joint.phase: 0 ~ 360 (위상 오프셋)
 
 === 이미지 표시 규칙 (필수!) ===
 - **fit_mode: "cover" 필수!** 원본 이미지가 화면을 꽉 채워야 합니다
-- 원본 이미지(배경+캐릭터 모두)가 그대로 보여야 합니다. 이미지가 안 보이면 실패입니다!
 - transform.position: 반드시 컴포지션 중앙 {"x": 너비/2, "y": 높이/2}
 - transform.scale: [100, 100] (cover 스케일링은 JSX가 자동 처리)
 - opacity: 100 (완전 불투명)
 
 === 관절 좌표 규칙 ===
-- x, y는 컴포지션 크기 기준의 픽셀 좌표 (이미지가 cover로 화면을 채운 상태에서의 위치)
-- 가로형(1920x1080): x는 0~1920, y는 0~1080
-- 세로형(1080x1920): x는 0~1080, y는 0~1920
-- 고정 핀(fixed_pins)은 반드시 지정! (발, 바닥 접점) → 없으면 전체가 흔들림
-- 관절(joints)은 이미지당 6~15개 정도가 이상적
-- 각 관절마다 part, motion, amount, speed, phase를 다르게 설정 (자연스러운 동작)
-- **phase가 핵심!** 좌우 대칭 부위는 180° 차이, 연결 부위는 30~90° 차이
+- ★ x, y는 퍼센트(0~100)! 이미지 내 캐릭터의 상대적 위치!
+- 이미지를 잘 보고 캐릭터 각 부위가 이미지의 어디쯤에 있는지 판단하세요
+- 고정 핀(fixed_pins)도 퍼센트로! (발/바닥 접점) → 없으면 전체가 흔들림
+- 관절(joints)은 3~6개 정도가 적당 (너무 많으면 왜곡)
+- **phase가 핵심!** 좌우 대칭 부위는 180° 차이
 
 === 씬 규칙 ===
 - 이미지 1장 = 씬 1개 (각 씬에 puppet 레이어 1개만)
 - 씬에 텍스트나 도형 추가하지 마세요!
-- 각 씬의 layers 배열에는 해당 이미지의 puppet 레이어만 넣으세요
-- transition_to_next: crossfade (duration 0.5) 사용
-- 모든 scenes의 duration 합 = settings.total_duration
+- transition_to_next: crossfade (duration 0.5)
 - entrance 사용 금지! (이미지를 즉시 표시해야 합니다)
 
 === 이미지 분석 시 주의사항 ===
-1. 캐릭터의 포즈/자세를 정확히 파악하세요 (정면, 측면, 앉은 자세 등)
-2. 보이지 않는 부위는 관절을 만들지 마세요 (뒤돌아 있으면 얼굴 관절 불필요)
-3. 캐릭터의 감정/상황을 파악하여 적절한 action 또는 모션 강도를 설정하세요
-4. 여러 캐릭터가 한 이미지에 있으면 가장 주요한 캐릭터 기준으로 리깅하세요
-5. 소품(총, 칼, 가방 등)도 별도 관절로 설정하면 생동감이 올라갑니다
+1. 캐릭터의 포즈/자세를 정확히 파악 (정면, 측면, 앉은 자세 등)
+2. 보이지 않는 부위는 관절을 만들지 마세요
+3. 캐릭터의 감정/상황에 맞는 모션 강도 설정
+4. 여러 캐릭터가 있으면 주요 캐릭터 기준으로 리깅
+5. 소품도 별도 관절로 설정하면 생동감 UP
 
 === 중요 ===
-- image_source.file은 반드시 제공된 파일 목록의 실제 파일명 그대로 사용 (확장자 포함)
-- 존재하지 않는 파일명 생성 금지, .png 임의 변환 금지
+- image_source.file은 제공된 파일 목록의 실제 파일명 그대로 (확장자 포함)
+- wiggle_elements, expression_links, bend_zones 사용 금지! joints만!
 - JSON만 출력 (설명 텍스트 절대 포함 금지)
 - $schema, definitions, properties 등 스키마 키워드 포함 금지`;
 
@@ -521,11 +538,7 @@ export async function POST(req: NextRequest) {
 
     if (isAnimateMode) {
       // 캐릭터 애니메이션 전용 프롬프트 (Puppet Pin만)
-      const fileList = images.map((img) => {
-        const cutout = (img as unknown as Record<string, string>).cutout_name;
-        return cutout ? `- ${img.name} (컷아웃: ${cutout})` : `- ${img.name}`;
-      }).join("\n");
-      const hasCutouts = images.some((img) => (img as unknown as Record<string, string>).cutout_name);
+      const fileList = images.map((img) => `- ${img.name}`).join("\n");
       parts.push({
         text: `이 캐릭터 이미지들을 분석하여 관절 리깅 애니메이션 JSON을 생성해주세요.
 
@@ -542,16 +555,15 @@ ${fileList}
 1. fit_mode: "cover", transform.position: {"x": ${fmt.w / 2}, "y": ${fmt.h / 2}}, scale: [100, 100], opacity: 100
 2. 이미지 1장 = 씬 1개, puppet 레이어 1개만 (텍스트/도형 금지!)
 3. **entrance, animation, exit 사용 금지!** 넣지 마세요
-4. joints 배열에 캐릭터 핵심 부위만 3~5개 (머리, 팔, 꼬리 등)
-5. x, y는 컴포지션 좌표 (가로: 0~${fmt.w}, 0~${fmt.h})
-6. amount 8~20 (CC Bend It 도 단위! 5 이하는 안 보임!), speed 0.4~0.7
-7. fixed_pins로 바닥 고정
+4. joints 배열에 캐릭터 핵심 부위 3~6개 (머리, 몸통, 팔, 꼬리 등)
+5. ★★★ x, y는 퍼센트(0~100)! 이미지 내 캐릭터 부위의 상대적 위치!
+   - 이미지를 잘 보고 머리가 어디에 있는지, 팔이 어디에 있는지 판단
+   - 예: 머리={x:50, y:12}, 가슴={x:50, y:38}, 오른팔={x:68, y:35}
+6. amount 5~15, speed 0.3~0.5
+7. fixed_pins로 바닥 고정 (퍼센트 좌표)
 8. settings: width=${fmt.w}, height=${fmt.h}, fps=${fpsVal}, total_duration=${dur}
 9. transition_to_next: crossfade (duration 0.5)
 10. background.color: [1.0, 1.0, 1.0] (흰색 배경)
-${hasCutouts ? `11. ★★★ 컷아웃 파일이 있습니다! image_source에 cutout_file 필드를 추가하세요!
-    예: "image_source": { "file": "원본.jpg", "cutout_file": "원본_cutout.png", "fit_mode": "cover" }
-    JSX가 원본=고정배경, 컷아웃=캐릭터(CC Bend It) 2레이어로 처리합니다.` : ""}
 11. wiggle_elements, bend_zones, expression_links, rig_mode, action 전부 사용 금지
 
 JSON만 출력.`,

@@ -76,6 +76,114 @@ export default function DocsPage() {
           ))}
         </section>
 
+        {/* ── Bone Rigging Guide ── */}
+        <section className="mb-12 card-glass p-6 space-y-5">
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <span className="w-8 h-8 bg-green-500/20 rounded-lg flex items-center justify-center text-sm">Rig</span>
+            캐릭터 본(Bone) 리깅 가이드
+          </h2>
+
+          <p className="text-sm text-white/60">
+            DUIK Bassel 스타일의 본 계층 구조를 자동 생성합니다.
+            각 관절은 <strong className="text-white/80">Null 레이어(뼈대)</strong>로 생성되어 부모-자식 관계로 연결됩니다.
+          </p>
+
+          {/* Architecture diagram */}
+          <div>
+            <h3 className="text-sm font-bold text-green-400 mb-2">시스템 아키텍처</h3>
+            <div className="bg-black/30 rounded-lg p-4 font-mono text-xs leading-loose">
+              <div className="text-white/40 mb-1">{`// AE 타임라인에 이렇게 생성됩니다:`}</div>
+              <div className="text-yellow-400">BONE_hips <span className="text-white/20">(Null, 루트, 가이드 레이어)</span></div>
+              <div className="ml-3 text-green-400">BONE_torso <span className="text-white/20">(breathe → Y축 사인파)</span></div>
+              <div className="ml-6 text-green-300">BONE_chest</div>
+              <div className="ml-9 text-blue-400">BONE_neck</div>
+              <div className="ml-12 text-red-400">BONE_head <span className="text-white/20">(nod → 부모 회전 30% 상속)</span></div>
+              <div className="ml-12 text-orange-400">BONE_hair <span className="text-white/20">(wave → 복합 사인파)</span></div>
+              <div className="ml-9 text-yellow-300">BONE_left_arm <span className="text-white/20">(swing → phase 180°)</span></div>
+              <div className="ml-9 text-yellow-300">BONE_right_arm <span className="text-white/20">(swing → phase 0°)</span></div>
+              <div className="ml-3 text-purple-400">BONE_left_leg</div>
+              <div className="ml-3 text-purple-400">BONE_right_leg</div>
+              <div className="ml-3 text-pink-400">BONE_tail <span className="text-white/20">(wave → 복합 파동)</span></div>
+              <div className="mt-2 text-ae-highlight">character_image.png <span className="text-white/20">(CC Bend It × N개 → 본의 rotation을 읽음)</span></div>
+            </div>
+          </div>
+
+          {/* Step by step */}
+          <div>
+            <h3 className="text-sm font-bold text-green-400 mb-2">작동 원리</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="bg-white/5 rounded-lg p-4">
+                <div className="text-green-400 font-bold text-sm mb-1">1. 본 생성</div>
+                <div className="text-xs text-white/50">AI가 분석한 관절 위치(퍼센트 좌표)에 Null 레이어를 생성하고, 부모-자식 관계를 설정합니다.</div>
+              </div>
+              <div className="bg-white/5 rounded-lg p-4">
+                <div className="text-blue-400 font-bold text-sm mb-1">2. Expression 적용</div>
+                <div className="text-xs text-white/50">각 본의 Rotation/Position에 모션별 Expression을 적용합니다. 부모 본의 움직임을 30% 상속받아 자연스러운 연쇄 반응을 만듭니다.</div>
+              </div>
+              <div className="bg-white/5 rounded-lg p-4">
+                <div className="text-purple-400 font-bold text-sm mb-1">3. CC Bend It 연동</div>
+                <div className="text-xs text-white/50">이미지 레이어에 CC Bend It 이펙트를 추가하고, 본의 rotation 값을 Expression으로 읽어 이미지를 자연스럽게 변형합니다.</div>
+              </div>
+            </div>
+          </div>
+
+          {/* AE Manual Adjustment */}
+          <div>
+            <h3 className="text-sm font-bold text-blue-400 mb-2">AE에서 수동 조정하기</h3>
+            <div className="space-y-2 text-xs text-white/60">
+              <div className="bg-white/5 rounded-lg p-3">
+                <strong className="text-white/80">본 위치 이동:</strong> BONE_xxx Null 레이어 선택 → V(Selection Tool)로 드래그 → CC Bend It도 자동으로 따라감
+              </div>
+              <div className="bg-white/5 rounded-lg p-3">
+                <strong className="text-white/80">키프레임 직접 제작:</strong> BONE_xxx 선택 → Expression 삭제(Alt+클릭) → R(Rotation) 또는 P(Position)으로 수동 키프레임 애니메이션
+              </div>
+              <div className="bg-white/5 rounded-lg p-3">
+                <strong className="text-white/80">CC Bend It 영역 조정:</strong> 이미지 레이어 선택 → Effects 패널에서 Rig_xxx의 Start/End 포인트를 이동하면 변형되는 영역이 바뀜
+              </div>
+              <div className="bg-white/5 rounded-lg p-3">
+                <strong className="text-white/80">모션 강도 조절:</strong> Expression 내 amt(진폭)과 spd(속도) 숫자를 직접 수정 → 더 크게/작게, 빠르게/느리게
+              </div>
+            </div>
+          </div>
+
+          {/* DUIK Integration */}
+          <div>
+            <h3 className="text-sm font-bold text-purple-400 mb-2">DUIK Bassel/Angela 연동 (선택)</h3>
+            <p className="text-xs text-white/50 mb-3">
+              DUIK가 없어도 본 리깅은 정상 작동합니다. DUIK를 설치하면 IK/FK, Walk Cycle 등 고급 기능을 추가할 수 있습니다.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              <div className="bg-green-500/5 border border-green-500/15 rounded-lg p-3">
+                <div className="text-green-400 font-bold mb-1">기본 모드 (DUIK 없이)</div>
+                <ul className="text-white/50 space-y-1">
+                  <li>- Null 레이어 본 계층</li>
+                  <li>- Expression 사인파/위글 모션</li>
+                  <li>- CC Bend It 이미지 변형</li>
+                  <li>- 부모-자식 모션 상속</li>
+                  <li>- 플러그인 설치 불필요</li>
+                </ul>
+              </div>
+              <div className="bg-purple-500/5 border border-purple-500/15 rounded-lg p-3">
+                <div className="text-purple-400 font-bold mb-1">DUIK 모드 (설치 시)</div>
+                <ul className="text-white/50 space-y-1">
+                  <li>- + IK/FK 전환 (팔/다리)</li>
+                  <li>- + 2-Bone IK Solver</li>
+                  <li>- + Bezier IK (긴 체인)</li>
+                  <li>- + Walk Cycle 자동 생성</li>
+                  <li>- + 컨트롤러 조작 인터페이스</li>
+                </ul>
+              </div>
+            </div>
+            <div className="mt-3 bg-purple-500/10 border border-purple-500/20 rounded-lg p-3 text-xs text-white/50">
+              <strong className="text-purple-400">DUIK 설치:</strong>{" "}
+              <a href="https://rxlaboratory.org/tools/duik-angela/" target="_blank" rel="noopener noreferrer"
+                 className="text-purple-400 underline hover:text-purple-300">rxlaboratory.org/tools/duik-angela</a>
+              {" "}(무료) → 설치 후 JSX 실행 시 자동 감지.
+              BONE_xxx Null 레이어를 선택하고 DUIK 패널에서 IK를 적용하면 손/발 컨트롤러로 관절을 조작할 수 있습니다.
+            </div>
+          </div>
+        </section>
+
         <div className="space-y-8">
           {/* Scene Types */}
           <section className="card-glass p-6 space-y-4">

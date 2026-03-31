@@ -62,6 +62,298 @@ function safeImportImage(filePath) {
     return app.project.importFile(opts);
 }
 
+// ============================================================
+// [0.5] DUIK-Style 본 리깅 시스템
+// ============================================================
+
+// DUIK 설치 여부 감지
+function detectDUIK() {
+    try {
+        var scriptsFolder = new Folder(app.path.toString() + "/Scripts/ScriptUI Panels");
+        if (!scriptsFolder.exists) return null;
+        // DUIK Angela API 파일 검색
+        var files = scriptsFolder.getFiles("*Duik*api*.jsxinc");
+        if (files.length > 0) return files[0].fsName;
+        // DUIK Bassel API 파일 검색
+        files = scriptsFolder.getFiles("*DuAEF*Duik*api*.jsxinc");
+        if (files.length > 0) return files[0].fsName;
+        return null;
+    } catch (e) { return null; }
+}
+
+// 본 계층 구조 정의
+var BONE_HIERARCHY = {
+    "hips":       { parent: null,    color: [1, 0.5, 0] },
+    "torso":      { parent: "hips",  color: [0, 0.8, 0] },
+    "chest":      { parent: "torso", color: [0, 0.8, 0.3] },
+    "neck":       { parent: "chest", color: [0.2, 0.6, 1] },
+    "head":       { parent: "neck",  color: [1, 0, 0] },
+    "left_arm":   { parent: "chest", color: [1, 1, 0] },
+    "right_arm":  { parent: "chest", color: [1, 1, 0] },
+    "left_hand":  { parent: "left_arm",  color: [1, 0.8, 0] },
+    "right_hand": { parent: "right_arm", color: [1, 0.8, 0] },
+    "left_leg":   { parent: "hips",  color: [0.5, 0, 1] },
+    "right_leg":  { parent: "hips",  color: [0.5, 0, 1] },
+    "tail":       { parent: "hips",  color: [0.8, 0.2, 0.8] },
+    "hair":       { parent: "head",  color: [0.9, 0.4, 0.1] },
+    "accessory":  { parent: "torso", color: [0.5, 0.5, 0.5] }
+};
+
+// 본 Null 레이어 생성
+function createBoneNull(comp, name, position, color) {
+    var bone = comp.layers.addNull();
+    bone.name = "BONE_" + name;
+    bone.property("Position").setValue(position);
+    bone.property("Anchor Point").setValue([50, 50]); // Null 기본 앵커포인트
+    // 작게 표시 + 색상으로 구분
+    bone.property("Scale").setValue([6, 6]);
+    bone.property("Opacity").setValue(40);
+    bone.guideLayer = true; // 렌더링에서 제외
+    // 라벨 색상 설정 (1-16)
+    if (color) {
+        // 빨강 계열 = 1, 노랑 = 3, 초록 = 4, 파랑 = 9
+        if (color[0] > 0.7 && color[1] < 0.3) bone.label = 1; // 빨강
+        else if (color[0] > 0.7 && color[1] > 0.7) bone.label = 3; // 노랑
+        else if (color[1] > 0.6) bone.label = 4; // 초록
+        else if (color[2] > 0.6) bone.label = 9; // 파랑
+        else bone.label = 6; // 보라
+    }
+    return bone;
+}
+
+// 모션별 Expression 생성 (본 레이어용)
+function getBoneExpression(motion, amount, speed, phase, parentBoneName) {
+    var baseExpr = "";
+    var phaseStr = phase.toFixed(4);
+
+    // 부모 본의 움직임을 상속 (계층적 모션)
+    var parentInfluence = "";
+    if (parentBoneName) {
+        parentInfluence =
+            "// 부모 본 영향\n" +
+            "var parentRot = 0;\n" +
+            "try { parentRot = thisComp.layer(\"BONE_" + parentBoneName + "\").rotation * 0.3; } catch(e) {}\n";
+    }
+
+    if (motion === "breathe") {
+        // 호흡: Y축 미세 사인파 + 스케일 변화
+        baseExpr =
+            "var amt = " + amount + ";\n" +
+            "var spd = " + speed + ";\n" +
+            "var ph = " + phaseStr + ";\n" +
+            "var breath = Math.sin(time * spd * Math.PI * 2 + ph) * amt;\n" +
+            "value + [0, breath]";
+    } else if (motion === "nod") {
+        // 끄덕임: Rotation 사인파
+        baseExpr =
+            parentInfluence +
+            "var amt = " + amount + ";\n" +
+            "var spd = " + speed + ";\n" +
+            "var ph = " + phaseStr + ";\n" +
+            "Math.sin(time * spd * Math.PI * 2 + ph) * amt + parentRot";
+    } else if (motion === "swing") {
+        // 흔들기: Rotation + 약간의 position offset
+        baseExpr =
+            parentInfluence +
+            "var amt = " + amount + ";\n" +
+            "var spd = " + speed + ";\n" +
+            "var ph = " + phaseStr + ";\n" +
+            "var swing = Math.sin(time * spd * Math.PI * 2 + ph);\n" +
+            "swing * amt + parentRot";
+    } else if (motion === "wave") {
+        // 물결: 복합 사인파 (자연스러운 물결)
+        baseExpr =
+            parentInfluence +
+            "var amt = " + amount + ";\n" +
+            "var spd = " + speed + ";\n" +
+            "var ph = " + phaseStr + ";\n" +
+            "var wave1 = Math.sin(time * spd * Math.PI * 2 + ph) * amt;\n" +
+            "var wave2 = Math.sin(time * spd * 1.7 * Math.PI * 2 + ph + 1.2) * amt * 0.3;\n" +
+            "wave1 + wave2 + parentRot";
+    } else if (motion === "shake") {
+        // 떨림: wiggle
+        baseExpr =
+            "wiggle(" + Math.max(speed * 5, 3) + ", " + amount + ")";
+    } else if (motion === "bob") {
+        // 위아래: Position Y 변화
+        baseExpr =
+            "var amt = " + amount + ";\n" +
+            "var spd = " + speed + ";\n" +
+            "var ph = " + phaseStr + ";\n" +
+            "var bob = Math.sin(time * spd * Math.PI * 2 + ph) * amt;\n" +
+            "value + [0, bob]";
+    } else {
+        // 기본: 사인파 rotation
+        baseExpr =
+            "var amt = " + amount + ";\n" +
+            "var spd = " + speed + ";\n" +
+            "var ph = " + phaseStr + ";\n" +
+            "Math.sin(time * spd * Math.PI * 2 + ph) * amt";
+    }
+
+    return baseExpr;
+}
+
+// ★ 2-Bone IK Solver Expression (Dan Ebberts 방식)
+// upperLayer와 lowerLayer의 rotation을 effector(컨트롤러) 위치로 자동 계산
+function getIKExpression(upperBoneName, lowerBoneName, effectorName, upperLen, lowerLen, isUpper) {
+    if (isUpper) {
+        return '// 2-Bone IK Solver (upper)\n' +
+            'var eff = thisComp.layer("' + effectorName + '");\n' +
+            'var goal = eff.position;\n' +
+            'var uLen = ' + upperLen + ';\n' +
+            'var lLen = ' + lowerLen + ';\n' +
+            'var start = position;\n' +
+            'var dx = goal[0] - start[0];\n' +
+            'var dy = goal[1] - start[1];\n' +
+            'var dist = Math.sqrt(dx*dx + dy*dy);\n' +
+            'dist = Math.min(dist, uLen + lLen - 1);\n' +
+            'var baseAngle = Math.atan2(dy, dx) * 180 / Math.PI;\n' +
+            'var cos_a = (uLen*uLen + dist*dist - lLen*lLen) / (2*uLen*dist);\n' +
+            'cos_a = Math.max(-1, Math.min(1, cos_a));\n' +
+            'var angle = Math.acos(cos_a) * 180 / Math.PI;\n' +
+            'baseAngle - angle';
+    } else {
+        return '// 2-Bone IK Solver (lower)\n' +
+            'var upper = thisComp.layer("' + upperBoneName + '");\n' +
+            'var eff = thisComp.layer("' + effectorName + '");\n' +
+            'var uLen = ' + upperLen + ';\n' +
+            'var lLen = ' + lowerLen + ';\n' +
+            'var start = upper.position;\n' +
+            'var goal = eff.position;\n' +
+            'var dx = goal[0] - start[0];\n' +
+            'var dy = goal[1] - start[1];\n' +
+            'var dist = Math.sqrt(dx*dx + dy*dy);\n' +
+            'dist = Math.min(dist, uLen + lLen - 1);\n' +
+            'var cos_b = (uLen*uLen + lLen*lLen - dist*dist) / (2*uLen*lLen);\n' +
+            'cos_b = Math.max(-1, Math.min(1, cos_b));\n' +
+            'var angle = Math.acos(cos_b) * 180 / Math.PI;\n' +
+            '180 - angle';
+    }
+}
+
+// ★ 본 기반 캐릭터 리깅 (DUIK 스타일)
+function rigCharacterWithBones(comp, aeLayer, joints, usePercent, log, errorLog, si) {
+    var boneMap = {}; // name → bone layer
+    var maxBends = 6;
+    var bendIdx = 0;
+
+    // 1단계: 모든 본 Null 레이어 생성
+    for (var ji = 0; ji < joints.length; ji++) {
+        var jDef = joints[ji];
+        var jPart = jDef.part || jDef.name || "body";
+        var rawX = Number(jDef.x) || 50;
+        var rawY = Number(jDef.y) || 50;
+        var jx = usePercent ? (rawX / 100) * comp.width : rawX;
+        var jy = usePercent ? (rawY / 100) * comp.height : rawY;
+
+        var hierDef = BONE_HIERARCHY[jPart] || { parent: null, color: [0.5, 0.5, 0.5] };
+        var bone = createBoneNull(comp, jPart, [jx, jy], hierDef.color);
+        boneMap[jPart] = bone;
+    }
+
+    // 2단계: 부모-자식 계층 설정
+    for (var partName in boneMap) {
+        if (!boneMap.hasOwnProperty(partName)) continue;
+        var hierDef2 = BONE_HIERARCHY[partName];
+        if (hierDef2 && hierDef2.parent && boneMap[hierDef2.parent]) {
+            try {
+                boneMap[partName].setParentWithJump(boneMap[hierDef2.parent]);
+            } catch (e) {}
+        }
+    }
+
+    // 3단계: 각 본에 모션 Expression 적용 + CC Bend It 연동
+    for (var ji2 = 0; ji2 < joints.length && bendIdx < maxBends; ji2++) {
+        try {
+            var jDef2 = joints[ji2];
+            var jPart2 = jDef2.part || jDef2.name || "body";
+            var jMotion = jDef2.motion || "breathe";
+            var jAmount = Number(jDef2.amount) || 10;
+            var jSpeed = Number(jDef2.speed) || 0.5;
+            var jPhase = (Number(jDef2.phase) || 0) * Math.PI / 180;
+            var rawX2 = Number(jDef2.x) || 50;
+            var rawY2 = Number(jDef2.y) || 50;
+            var jx2 = usePercent ? (rawX2 / 100) * comp.width : rawX2;
+            var jy2 = usePercent ? (rawY2 / 100) * comp.height : rawY2;
+
+            // 값 범위 보장
+            jAmount = Math.max(jAmount, 5);
+            jAmount = Math.min(jAmount, 30);
+            jSpeed = Math.max(jSpeed, 0.2);
+            jSpeed = Math.min(jSpeed, 2.0);
+
+            // 부모 본 이름 찾기
+            var parentPartName = null;
+            if (BONE_HIERARCHY[jPart2] && BONE_HIERARCHY[jPart2].parent) {
+                parentPartName = BONE_HIERARCHY[jPart2].parent;
+                if (!boneMap[parentPartName]) parentPartName = null;
+            }
+
+            var bone2 = boneMap[jPart2];
+            if (!bone2) continue;
+
+            // 본 레이어에 모션 Expression 적용
+            if (jMotion === "breathe" || jMotion === "bob") {
+                // Position 기반 모션
+                bone2.property("Position").expression =
+                    getBoneExpression(jMotion, jAmount, jSpeed, jPhase, null);
+            } else {
+                // Rotation 기반 모션
+                bone2.property("Rotation").expression =
+                    getBoneExpression(jMotion, jAmount, jSpeed, jPhase, parentPartName);
+            }
+
+            // CC Bend It를 이미지 레이어에 추가하고, 본의 rotation을 참조
+            var bendEff = aeLayer.property("Effects").addProperty("CC Bend It");
+            bendEff.name = "Rig_" + jPart2;
+
+            var bendLen = 100;
+            var isArm = (jPart2.indexOf("arm") >= 0 || jPart2.indexOf("hand") >= 0);
+            var isTail = (jPart2.indexOf("tail") >= 0 || jPart2.indexOf("cape") >= 0 || jPart2.indexOf("hair") >= 0);
+
+            if (isArm) {
+                bendEff.property("Start").setValue([jx2 - bendLen, jy2]);
+                bendEff.property("End").setValue([jx2 + bendLen, jy2]);
+            } else if (isTail) {
+                bendEff.property("Start").setValue([jx2, jy2 - bendLen * 1.5]);
+                bendEff.property("End").setValue([jx2, jy2 + bendLen * 1.5]);
+            } else {
+                bendEff.property("Start").setValue([jx2, jy2 - bendLen]);
+                bendEff.property("End").setValue([jx2, jy2 + bendLen]);
+            }
+
+            // ★ CC Bend It의 Bend 값을 본의 Rotation에 연동
+            if (jMotion === "breathe" || jMotion === "bob") {
+                // 호흡/bob은 본의 Y position 변화를 bend로 변환
+                bendEff.property("Bend").expression =
+                    "var bone = thisComp.layer(\"BONE_" + jPart2 + "\");\n" +
+                    "try {\n" +
+                    "  var dy = bone.position[1] - bone.position.valueAtTime(0)[1];\n" +
+                    "  dy * 0.5;\n" +
+                    "} catch(e) { 0; }";
+            } else if (jMotion === "shake") {
+                bendEff.property("Bend").expression =
+                    "wiggle(" + Math.max(jSpeed * 5, 3) + ", " + jAmount + ")";
+            } else {
+                // 나머지 모션: 본의 rotation을 직접 bend 값으로 사용
+                bendEff.property("Bend").expression =
+                    "var bone = thisComp.layer(\"BONE_" + jPart2 + "\");\n" +
+                    "try { bone.rotation; } catch(e) { 0; }";
+            }
+
+            bendIdx++;
+            log.push("    본[" + jPart2 + "]: " + jMotion + " amt:" + jAmount + " spd:" + jSpeed +
+                     (parentPartName ? " (부모:" + parentPartName + ")" : "") +
+                     " at(" + Math.round(jx2) + "," + Math.round(jy2) + ")");
+        } catch (jErr) {
+            errorLog.push("씬 " + (si + 1) + " bone[" + ji2 + "]: " + jErr.toString());
+        }
+    }
+
+    return bendIdx;
+}
+
 // 프로젝트 폴더에서 이미지 파일 찾기 (파일명 불일치 대응)
 function findImageFile(projectFolder, fileName) {
     // 1. 정확한 파일명으로 시도
@@ -1506,118 +1798,36 @@ function processV2(comp, data, projectFolder) {
                     aeLayer.property("Opacity").setValue(100);
                     log.push("    위치: [" + puppetPosX + ", " + puppetPosY + "] 스케일: " + pBaseScale.toFixed(1) + "% (fit:" + pFitMode + ")");
 
-                    // ★★★ 핵심 설계: 모든 모션은 CC Bend It으로만 구현! ★★★
-                    // Transform(Scale/Rotation/Position)에 Expression 걸지 않음 → 이미지 전체가 흔들리지 않음
-                    // CC Bend It만 사용 → 특정 부위만 미세하게 변형
-
+                    // ★★★ DUIK-Style 본 리깅 시스템 ★★★
+                    // 본 계층(Null 레이어) + CC Bend It 연동 = 자연스러운 관절 움직임
                     var joints = layerDef.joints || layerDef.pins || [];
-                    var bendIdx = 0;
-                    var maxBends = 6;
 
-                    for (var ji = 0; ji < joints.length && bendIdx < maxBends; ji++) {
-                        try {
-                            var jDef = joints[ji];
-                            var jMotion = jDef.motion || "breathe";
-                            var jAmount = Math.min(Number(jDef.amount) || 5, 30); // ★ 최대 30도 (CC Bend It은 도 단위, 8도는 안 보임)
-                            var jSpeed = Math.min(Number(jDef.speed) || 0.5, 2.0); // ★ 최대 속도 2.0
-                            var jPhase = (Number(jDef.phase) || 0) * Math.PI / 180;
-                            var jPart = jDef.part || jDef.name || "body";
-                            var jx = Number(jDef.x) || (comp.width / 2);
-                            var jy = Number(jDef.y) || (comp.height / 2);
-
-                            var bendEff = aeLayer.property("Effects").addProperty("CC Bend It");
-                            bendEff.name = "J_" + (jDef.name || jPart || bendIdx);
-
-                            var bendLen = 80 * scaleFactor; // ★ 50→80 벤드 영역 확대
-                            var isHead = (jPart.indexOf("head") >= 0);
-                            var isArm = (jPart.indexOf("arm") >= 0 || jPart.indexOf("hand") >= 0);
-                            var isTail = (jPart.indexOf("tail") >= 0 || jPart.indexOf("cape") >= 0 || jPart.indexOf("hair") >= 0);
-                            var isLeg = (jPart.indexOf("leg") >= 0);
-
-                            if (isArm || isLeg) {
-                                bendEff.property("Start").setValue([jx - bendLen, jy]);
-                                bendEff.property("End").setValue([jx + bendLen, jy]);
-                            } else if (isTail) {
-                                bendEff.property("Start").setValue([jx, Math.max(0, jy - bendLen * 1.5)]);
-                                bendEff.property("End").setValue([jx, Math.min(comp.height, jy + bendLen * 1.5)]);
-                            } else if (isHead) {
-                                bendEff.property("Start").setValue([jx, Math.max(0, jy - bendLen)]);
-                                bendEff.property("End").setValue([jx, jy + bendLen * 0.3]);
-                            } else {
-                                bendEff.property("Start").setValue([jx, Math.max(0, jy - bendLen)]);
-                                bendEff.property("End").setValue([jx, Math.min(comp.height, jy + bendLen)]);
-                            }
-
-                            // ★ 모션별 벤드 진폭 - 배율 제거, amount 그대로 사용
-                            var bendAmt = jAmount;
-                            if (jMotion === "breathe") bendAmt = Math.max(jAmount, 5); // 최소 5도
-                            else if (jMotion === "nod") bendAmt = Math.max(jAmount, 8); // 최소 8도
-                            else if (jMotion === "swing" || jMotion === "wave") bendAmt = Math.max(jAmount, 10); // 최소 10도
-                            else if (jMotion === "shake") bendAmt = Math.max(jAmount, 5);
-
-                            if (jMotion === "shake") {
-                                var skFreq = Math.max(jSpeed * 5, 3);
-                                bendEff.property("Bend").expression =
-                                    "wiggle(" + skFreq + ", " + bendAmt + ")";
-                            } else {
-                                bendEff.property("Bend").expression =
-                                    "var amt = " + bendAmt + ";\n" +
-                                    "var spd = " + jSpeed + ";\n" +
-                                    "var ph = " + jPhase.toFixed(4) + ";\n" +
-                                    "Math.sin(time * spd * Math.PI * 2 + ph) * amt";
-                            }
-
-                            bendIdx++;
-                            log.push("    CC벤드[" + (bendIdx-1) + "]: " + (jDef.name || jPart) + " [" + jMotion + "] amt:" + bendAmt.toFixed(1) + "° spd:" + jSpeed + " at(" + jx + "," + jy + ")");
-                        } catch (jErr) {
-                            errorLog.push("씬 " + (si+1) + " joint[" + ji + "]: " + jErr.toString());
-                        }
+                    // joints가 없거나 비어있으면 → 기본 관절 자동 생성 (퍼센트 좌표)
+                    if (joints.length === 0) {
+                        joints = [
+                            { name: "head", part: "head", x: 50, y: 15, motion: "nod", amount: 10, speed: 0.5, phase: 90 },
+                            { name: "torso", part: "torso", x: 50, y: 40, motion: "breathe", amount: 6, speed: 0.3, phase: 0 },
+                            { name: "right_arm", part: "right_arm", x: 65, y: 35, motion: "swing", amount: 12, speed: 0.4, phase: 0 },
+                            { name: "left_arm", part: "left_arm", x: 35, y: 35, motion: "swing", amount: 12, speed: 0.4, phase: 180 }
+                        ];
+                        log.push("    ★ joints 없음 → 기본 관절 4개 자동 생성 (본 계층 포함)");
                     }
 
-                    // bend_zones 추가 (고급 변형 영역)
-                    if (layerDef.bend_zones && layerDef.bend_zones.length > 0) {
-                        for (var bzi = 0; bzi < layerDef.bend_zones.length && bendIdx < maxBends; bzi++) {
-                            try {
-                                var bz = layerDef.bend_zones[bzi];
-                                var bzEffect = aeLayer.property("Effects").addProperty("CC Bend It");
-                                bzEffect.name = "Zone_" + (bz.name || bzi);
-                                bzEffect.property("Start").setValue([Number(bz.start.x), Number(bz.start.y)]);
-                                bzEffect.property("End").setValue([Number(bz.end.x), Number(bz.end.y)]);
-                                var bzAmt = Math.min(Number(bz.amount) || 5, 8);
-                                var bzSpd = Math.min(Number(bz.speed) || 0.4, 1.0);
-                                var bzPh = (Number(bz.phase) || 0) * Math.PI / 180;
-                                bzEffect.property("Bend").expression =
-                                    "Math.sin(time * " + bzSpd + " * Math.PI * 2 + " + bzPh.toFixed(4) + ") * " + bzAmt;
-                                bendIdx++;
-                                log.push("    벤드존[" + bzi + "]: " + (bz.name || bzi));
-                            } catch (bzErr) {
-                                errorLog.push("씬 " + (si+1) + " bend_zone: " + bzErr.toString());
-                            }
-                        }
+                    // ★ 좌표가 퍼센트(0~100)인지 픽셀인지 자동 감지
+                    var usePercent = true;
+                    for (var ci = 0; ci < joints.length; ci++) {
+                        var cx = Number(joints[ci].x) || 0;
+                        var cy = Number(joints[ci].y) || 0;
+                        if (cx > 100 || cy > 100) { usePercent = false; break; }
+                    }
+                    if (usePercent) {
+                        log.push("    ★ 퍼센트 좌표 감지 → 픽셀로 자동 변환");
                     }
 
-                    // 관절이 전혀 없으면 기본 벤드 3개 추가 (머리/몸통/팔)
-                    if (bendIdx === 0) {
-                        try {
-                            // 머리 끄덕임
-                            var defHead = aeLayer.property("Effects").addProperty("CC Bend It");
-                            defHead.name = "Default_Head";
-                            defHead.property("Start").setValue([comp.width / 2, comp.height * 0.1]);
-                            defHead.property("End").setValue([comp.width / 2, comp.height * 0.35]);
-                            defHead.property("Bend").expression = "Math.sin(time * 0.5 * Math.PI * 2) * 8";
+                    // ★ 본 리깅 실행 (Null 레이어 계층 + CC Bend It 연동)
+                    var bendIdx = rigCharacterWithBones(comp, aeLayer, joints, usePercent, log, errorLog, si);
 
-                            // 몸통 호흡
-                            var defBody = aeLayer.property("Effects").addProperty("CC Bend It");
-                            defBody.name = "Default_Body";
-                            defBody.property("Start").setValue([comp.width / 2, comp.height * 0.3]);
-                            defBody.property("End").setValue([comp.width / 2, comp.height * 0.7]);
-                            defBody.property("Bend").expression = "Math.sin(time * 0.3 * Math.PI * 2) * 5";
-
-                            log.push("    기본 벤드 적용 (관절 미지정): 머리+몸통");
-                        } catch (defErr) {}
-                    }
-
-                    log.push("  → 캐릭터 리깅 완료! (CC Bend It: " + Math.max(bendIdx, 1) + "개, Transform 고정)");
+                    log.push("  → 본 리깅 완료! (본: " + joints.length + "개, CC Bend It: " + bendIdx + "개, 계층적 모션)");
                     if (!firstImgLayer) firstImgLayer = aeLayer;
                 }
               } catch (puppetErr) {
@@ -1853,19 +2063,21 @@ function processV2(comp, data, projectFolder) {
         }
     }
 
-    // 처리 결과 로그 표시
+    // ★ 항상 처리 결과 로그 표시 (디버그용)
+    var summary = "=== 처리 결과 ===\n";
+    summary += "씬: " + data.scenes.length + "개\n";
     if (errorLog.length > 0) {
-        var errMsg = "=== v2 처리 결과 ===\n\n";
-        errMsg += "❌ 에러 " + errorLog.length + "개:\n";
+        summary += "\n❌ 에러 " + errorLog.length + "개:\n";
         for (var ei = 0; ei < errorLog.length; ei++) {
-            errMsg += "  • " + errorLog[ei] + "\n";
+            summary += "  • " + errorLog[ei] + "\n";
         }
-        errMsg += "\n=== 처리 로그 ===\n";
-        for (var li2 = 0; li2 < Math.min(log.length, 30); li2++) {
-            errMsg += log[li2] + "\n";
-        }
-        alert(errMsg);
     }
+    summary += "\n=== 상세 로그 ===\n";
+    for (var li2 = 0; li2 < Math.min(log.length, 40); li2++) {
+        summary += log[li2] + "\n";
+    }
+    if (log.length > 40) summary += "... (" + (log.length - 40) + "개 더)\n";
+    alert(summary);
 }
 
 // ============================================================
