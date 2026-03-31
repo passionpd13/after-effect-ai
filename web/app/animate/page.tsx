@@ -7,6 +7,7 @@ import {
   RIG_MODE_LABELS,
   RIG_BODY_PART_LABELS,
   RIG_JOINT_MOTION_LABELS,
+  BONE_HIERARCHY,
 } from "@/lib/schema-data";
 
 interface UploadedImage {
@@ -190,13 +191,29 @@ export default function AnimatePage() {
     }
 
     folder.file("사용법.txt",
-      "=== AE 캐릭터 애니메이션 ===\n\n" +
-      "1. After Effects 실행\n" +
+      "=== AE 캐릭터 본 리깅 애니메이션 ===\n\n" +
+      "[ 기본 사용법 ]\n" +
+      "1. After Effects 실행 (CC 2020 이상 권장)\n" +
       "2. 파일(F) > 스크립트(T) > 스크립트 파일 실행...\n" +
       "3. ae_auto_pipeline.jsx 선택\n" +
-      "4. JSON 파일 선택\n" +
-      "5. Puppet Pin 애니메이션 자동 생성!\n\n" +
-      "MP4 출력: 컴포지션 > Adobe Media Encoder에 추가 (Ctrl+Alt+M)\n"
+      "4. 이 폴더의 JSON 파일 선택\n" +
+      "5. 본(Bone) 리깅된 캐릭터가 자동으로 움직입니다!\n\n" +
+      "[ 생성되는 구조 ]\n" +
+      "- BONE_head, BONE_torso, BONE_right_arm... (Null 레이어 = 뼈대)\n" +
+      "- 캐릭터 이미지 레이어 (CC Bend It 이펙트가 본의 회전을 따라감)\n" +
+      "- 본끼리 부모-자식 관계: 몸통 움직이면 머리/팔이 자동으로 따라감\n\n" +
+      "[ AE에서 수동 조정 ]\n" +
+      "- BONE_xxx Null 레이어를 선택 → Rotation/Position 키프레임 수정\n" +
+      "- CC Bend It의 Start/End 점을 이동하면 벤드 영역 변경\n" +
+      "- 본의 Expression을 삭제하고 직접 키프레임 애니메이션 가능\n\n" +
+      "[ DUIK Bassel 연동 (선택사항, 더 고급) ]\n" +
+      "- DUIK 설치: rxlaboratory.org/tools/duik-angela\n" +
+      "- 설치 후 JSX 실행 시 자동 감지됨\n" +
+      "- DUIK의 IK/FK, Walk Cycle 등 고급 기능 활용 가능\n\n" +
+      "[ 출력 ]\n" +
+      "- MP4: 컴포지션 > Adobe Media Encoder에 추가 (Ctrl+Alt+M)\n" +
+      "- GIF: Media Encoder에서 애니메이션 GIF 선택\n" +
+      "- 프레임: 컴포지션 > 프레임을 파일로 저장\n"
     );
 
     const blob = await zip.generateAsync({ type: "blob" });
@@ -218,7 +235,7 @@ export default function AnimatePage() {
             <span className="text-gradient">AI 캐릭터 리깅 애니메이션</span>
           </h1>
           <p className="text-white/50 text-sm">
-            일러스트/만화 캐릭터의 관절을 AI가 자동 분석하여 자연스럽게 움직이는 애니메이션을 생성합니다
+            DUIK-Style 본(Bone) 리깅으로 캐릭터의 관절을 AI가 자동 분석 → 부모-자식 계층 구조의 자연스러운 애니메이션
           </p>
         </div>
 
@@ -312,7 +329,7 @@ export default function AnimatePage() {
                       <img src={img.dataUrl} alt="" className="w-16 h-16 rounded object-contain bg-[#222] flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <div className="text-xs truncate">{img.name}</div>
-                        <div className="text-[10px] text-green-400/70 mt-0.5">씬 {i + 1} · {animationDuration}초 · Puppet Pin</div>
+                        <div className="text-[10px] text-green-400/70 mt-0.5">씬 {i + 1} · {animationDuration}초 · Bone Rig</div>
                       </div>
                       <button onClick={() => removeImage(i)} className="text-red-400/60 hover:text-red-400 text-xs px-2">✕</button>
                     </div>
@@ -408,15 +425,20 @@ export default function AnimatePage() {
             <div className="card-glass p-5">
               <h2 className="text-base font-bold mb-3">관절 리깅 시스템</h2>
 
-              {/* Body Parts */}
+              {/* Body Parts with hierarchy info */}
               <div className="mb-3">
-                <h3 className="text-[11px] text-white/60 font-medium mb-2">지원 신체 부위</h3>
+                <h3 className="text-[11px] text-white/60 font-medium mb-2">지원 신체 부위 (본 계층)</h3>
                 <div className="flex flex-wrap gap-1.5">
-                  {Object.entries(RIG_BODY_PART_LABELS).map(([key, label]) => (
-                    <span key={key} className="bg-white/5 rounded px-2 py-0.5 text-[10px] text-white/50">
-                      {label}
-                    </span>
-                  ))}
+                  {Object.entries(RIG_BODY_PART_LABELS).map(([key, label]) => {
+                    const parent = BONE_HIERARCHY[key];
+                    return (
+                      <span key={key} className="bg-white/5 rounded px-2 py-0.5 text-[10px] text-white/50"
+                            title={parent ? `부모: ${RIG_BODY_PART_LABELS[parent] || parent}` : "루트 본"}>
+                        {label}
+                        {parent && <span className="text-white/20 ml-0.5">← {RIG_BODY_PART_LABELS[parent] || parent}</span>}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -433,10 +455,14 @@ export default function AnimatePage() {
                 </div>
               </div>
 
-              {/* Phase Explanation */}
-              <div className="bg-green-500/5 border border-green-500/15 rounded-lg p-2.5 text-[10px] text-white/50">
-                <span className="text-green-400 font-medium">Phase(위상)</span>으로 관절이 연동됩니다.
-                좌우 대칭 부위는 180° 차이, 연결 부위는 30~90° 차이로 자연스러운 동작을 만듭니다.
+              {/* Key concepts */}
+              <div className="space-y-1.5">
+                <div className="bg-green-500/5 border border-green-500/15 rounded-lg p-2.5 text-[10px] text-white/50">
+                  <span className="text-green-400 font-medium">Phase(위상)</span>: 좌우 대칭 부위 180° 차이, 연결 부위 30~90° 차이 → 자연스러운 연동
+                </div>
+                <div className="bg-blue-500/5 border border-blue-500/15 rounded-lg p-2.5 text-[10px] text-white/50">
+                  <span className="text-blue-400 font-medium">좌표 시스템</span>: 퍼센트(0~100%) 기반 → 머리 x:50 y:12 = &quot;상단 가운데&quot;. 해상도에 무관하게 정확
+                </div>
               </div>
             </div>
           </div>
@@ -497,32 +523,121 @@ export default function AnimatePage() {
               <h2 className="text-base font-bold mb-3">사용법</h2>
               <div className="space-y-2 text-[11px] text-white/60">
                 <div className="flex items-start gap-2">
-                  <span className="text-green-400 font-bold">1.</span>
+                  <span className="text-green-400 font-bold shrink-0">1.</span>
                   <span>캐릭터 일러스트/만화 이미지 업로드</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="text-green-400 font-bold">2.</span>
-                  <span>리깅 모드 선택 (간단/고급/액션)</span>
+                  <span className="text-green-400 font-bold shrink-0">2.</span>
+                  <span>리깅 모드 선택 + 연출 설명 입력 (선택)</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="text-green-400 font-bold">3.</span>
-                  <span>&quot;캐릭터 리깅 애니메이션 생성&quot; 클릭</span>
+                  <span className="text-green-400 font-bold shrink-0">3.</span>
+                  <span>&quot;캐릭터 리깅 애니메이션 생성&quot; 클릭 → AI가 관절 위치를 자동 분석</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="text-green-400 font-bold">4.</span>
-                  <span>ZIP 다운로드 → 압축 해제</span>
+                  <span className="text-green-400 font-bold shrink-0">4.</span>
+                  <span>ZIP 다운로드 → 한 폴더에 압축 해제</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="text-green-400 font-bold">5.</span>
-                  <span>After Effects → 파일 → 스크립트 실행 → JSX 선택</span>
+                  <span className="text-green-400 font-bold shrink-0">5.</span>
+                  <span>After Effects → 파일 → 스크립트 실행 → <strong className="text-white/80">ae_auto_pipeline.jsx</strong> 선택</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="text-green-400 font-bold">6.</span>
-                  <span>JSON 선택 → 관절이 리깅된 캐릭터가 자동으로 움직입니다!</span>
+                  <span className="text-green-400 font-bold shrink-0">6.</span>
+                  <span>JSON 선택 → 본(Bone) 리깅된 캐릭터가 자동으로 움직입니다!</span>
                 </div>
               </div>
-              <div className="mt-3 bg-green-500/10 border border-green-500/20 rounded-lg p-2.5 text-[10px] text-green-400/80">
-                배경 투명 PNG 권장 | 관절별 독립 모션 | phase(위상)으로 자연스러운 연동 | 최대 8개 CC Bend It 스태킹
+            </div>
+
+            {/* Bone Rigging System Explanation */}
+            <div className="card-glass p-5">
+              <h2 className="text-base font-bold mb-3">본(Bone) 리깅 시스템</h2>
+              <p className="text-[11px] text-white/50 mb-3">
+                DUIK Bassel 방식의 본 계층 구조를 자동 생성합니다. 각 관절은 Null 레이어(뼈대)로 생성되며,
+                부모-자식 관계로 연결되어 몸통이 움직이면 머리/팔이 자연스럽게 따라갑니다.
+              </p>
+
+              {/* Bone Hierarchy Visual */}
+              <div className="bg-black/30 rounded-lg p-3 mb-3 font-mono text-[10px] leading-relaxed">
+                <div className="text-yellow-400">BONE_hips <span className="text-white/30">(루트)</span></div>
+                <div className="text-green-400 ml-3">├── BONE_torso <span className="text-white/30">(호흡)</span></div>
+                <div className="text-green-400 ml-6">├── BONE_chest</div>
+                <div className="text-blue-400 ml-9">├── BONE_neck → BONE_head <span className="text-white/30">(끄덕임)</span></div>
+                <div className="text-yellow-300 ml-9">├── BONE_left_arm <span className="text-white/30">(흔들림 0°)</span></div>
+                <div className="text-yellow-300 ml-9">└── BONE_right_arm <span className="text-white/30">(흔들림 180°)</span></div>
+                <div className="text-purple-400 ml-3">├── BONE_left_leg</div>
+                <div className="text-purple-400 ml-3">├── BONE_right_leg</div>
+                <div className="text-pink-400 ml-3">└── BONE_tail <span className="text-white/30">(물결)</span></div>
+              </div>
+
+              {/* How it works */}
+              <div className="space-y-2 text-[10px]">
+                <div className="flex items-start gap-2">
+                  <span className="text-green-400 font-bold shrink-0">A</span>
+                  <span className="text-white/50"><strong className="text-white/80">Null 레이어</strong>가 뼈대 역할 → 각각 Rotation/Position에 Expression 자동 적용</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-green-400 font-bold shrink-0">B</span>
+                  <span className="text-white/50"><strong className="text-white/80">부모-자식 연결</strong> → chest 본이 회전하면 head, arm 본이 함께 움직임</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-green-400 font-bold shrink-0">C</span>
+                  <span className="text-white/50"><strong className="text-white/80">CC Bend It</strong>가 본의 회전값을 읽어서 이미지를 자연스럽게 변형</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-green-400 font-bold shrink-0">D</span>
+                  <span className="text-white/50"><strong className="text-white/80">좌표는 퍼센트(%)</strong> → AI가 &quot;머리=상단50%&quot; 식으로 인식 → 정확도 UP</span>
+                </div>
+              </div>
+
+              {/* AE Manual Editing Tips */}
+              <div className="mt-3 bg-blue-500/10 border border-blue-500/20 rounded-lg p-2.5 text-[10px] text-blue-300/80">
+                <strong>AE에서 수동 조정:</strong> BONE_xxx Null 레이어 선택 →
+                R(Rotation), P(Position) 키프레임 직접 수정 가능.
+                Expression 삭제 후 수동 키프레임 애니메이션도 OK!
+              </div>
+            </div>
+
+            {/* DUIK Integration */}
+            <div className="card-glass p-5">
+              <h2 className="text-base font-bold mb-3">DUIK Bassel 연동 (선택)</h2>
+              <p className="text-[11px] text-white/50 mb-3">
+                DUIK가 설치되어 있으면 IK/FK, Walk Cycle 등 고급 기능을 활용할 수 있습니다.
+                설치 없이도 본 리깅은 정상 작동합니다.
+              </p>
+              <div className="space-y-2 text-[10px]">
+                <div className="flex items-start gap-2">
+                  <span className="text-purple-400 font-bold shrink-0">1.</span>
+                  <span className="text-white/50">
+                    <a href="https://rxlaboratory.org/tools/duik-angela/" target="_blank" rel="noopener noreferrer"
+                       className="text-purple-400 underline hover:text-purple-300">
+                      DUIK Angela (무료) 다운로드
+                    </a> → After Effects에 설치
+                  </span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-purple-400 font-bold shrink-0">2.</span>
+                  <span className="text-white/50">JSX 실행 시 자동으로 DUIK 설치 감지</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-purple-400 font-bold shrink-0">3.</span>
+                  <span className="text-white/50">BONE_xxx Null 레이어를 선택 → DUIK 패널에서 IK 적용</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-purple-400 font-bold shrink-0">4.</span>
+                  <span className="text-white/50">팔/다리에 IK → 손/발 컨트롤러만 움직이면 관절이 자동 구부러짐</span>
+                </div>
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2 text-[10px]">
+                <div className="bg-white/5 rounded-lg p-2">
+                  <div className="text-green-400 font-medium mb-1">기본 (DUIK 없이)</div>
+                  <div className="text-white/40">본 계층 + CC Bend It + Expression 사인파. 자동 생성, 즉시 사용 가능</div>
+                </div>
+                <div className="bg-white/5 rounded-lg p-2">
+                  <div className="text-purple-400 font-medium mb-1">고급 (DUIK 설치)</div>
+                  <div className="text-white/40">+ IK/FK 전환 + Walk Cycle + Bezier IK + 컨트롤러 조작</div>
+                </div>
               </div>
             </div>
           </div>
