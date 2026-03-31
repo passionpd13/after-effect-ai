@@ -66,19 +66,78 @@ function safeImportImage(filePath) {
 // [0.5] DUIK-Style 본 리깅 시스템
 // ============================================================
 
-// DUIK 설치 여부 감지
-function detectDUIK() {
+// DUIK 설치 여부 감지 + API 로드
+var DUIK_LOADED = false;
+var DUIK_API_PATH = null;
+
+function detectAndLoadDUIK() {
     try {
-        var scriptsFolder = new Folder(app.path.toString() + "/Scripts/ScriptUI Panels");
-        if (!scriptsFolder.exists) return null;
-        // DUIK Angela API 파일 검색
-        var files = scriptsFolder.getFiles("*Duik*api*.jsxinc");
-        if (files.length > 0) return files[0].fsName;
-        // DUIK Bassel API 파일 검색
-        files = scriptsFolder.getFiles("*DuAEF*Duik*api*.jsxinc");
-        if (files.length > 0) return files[0].fsName;
-        return null;
-    } catch (e) { return null; }
+        // ScriptUI Panels 폴더에서 DUIK API 파일 검색
+        var searchPaths = [
+            app.path.toString() + "/Scripts/ScriptUI Panels",
+            app.path.toString() + "/Scripts"
+        ];
+
+        for (var si = 0; si < searchPaths.length; si++) {
+            var folder = new Folder(searchPaths[si]);
+            if (!folder.exists) continue;
+
+            // 1차: 현재 폴더에서 직접 검색
+            var files = folder.getFiles("*Duik*api*.jsxinc");
+            if (files.length > 0) { DUIK_API_PATH = files[0].fsName; break; }
+
+            files = folder.getFiles("*DuAEF*api*.jsxinc");
+            if (files.length > 0) { DUIK_API_PATH = files[0].fsName; break; }
+
+            var exact = new File(searchPaths[si] + "/Duik_api.jsxinc");
+            if (exact.exists) { DUIK_API_PATH = exact.fsName; break; }
+            exact = new File(searchPaths[si] + "/DuAEF_Duik_api.jsxinc");
+            if (exact.exists) { DUIK_API_PATH = exact.fsName; break; }
+
+            // 2차: 하위 폴더 검색 (Duik_API_17.x.x 같은 폴더 안에 있는 경우)
+            var subFolders = folder.getFiles();
+            for (var sfi = 0; sfi < subFolders.length; sfi++) {
+                if (!(subFolders[sfi] instanceof Folder)) continue;
+                var sub = subFolders[sfi];
+
+                var subFiles = sub.getFiles("*Duik*api*.jsxinc");
+                if (subFiles.length > 0) { DUIK_API_PATH = subFiles[0].fsName; break; }
+
+                subFiles = sub.getFiles("*DuAEF*api*.jsxinc");
+                if (subFiles.length > 0) { DUIK_API_PATH = subFiles[0].fsName; break; }
+
+                var subExact = new File(sub.fsName + "/Duik_api.jsxinc");
+                if (subExact.exists) { DUIK_API_PATH = subExact.fsName; break; }
+            }
+            if (DUIK_API_PATH) break;
+        }
+
+        if (!DUIK_API_PATH) return false;
+
+        // DUIK API 로드 시도
+        try {
+            $.evalFile(new File(DUIK_API_PATH));
+            // DuAEF 초기화
+            if (typeof DuAEF !== "undefined") {
+                DuAEF.init("AE_Auto_Pipeline", "1.0", "AEAutoPipeline");
+                DuAEF.enterRunTime();
+                DUIK_LOADED = true;
+                return true;
+            }
+            // Duik 네임스페이스 직접 확인 (Angela 버전)
+            if (typeof Duik !== "undefined") {
+                DUIK_LOADED = true;
+                return true;
+            }
+        } catch (loadErr) {
+            // API 로드 실패 → DUIK 없는 것으로 처리
+            DUIK_LOADED = false;
+        }
+
+        return false;
+    } catch (e) {
+        return false;
+    }
 }
 
 // 본 계층 구조 정의
@@ -348,6 +407,331 @@ function rigCharacterWithBones(comp, aeLayer, joints, usePercent, log, errorLog,
                      " at(" + Math.round(jx2) + "," + Math.round(jy2) + ")");
         } catch (jErr) {
             errorLog.push("씬 " + (si + 1) + " bone[" + ji2 + "]: " + jErr.toString());
+        }
+    }
+
+    return bendIdx;
+}
+
+// ★ DUIK API 기반 캐릭터 리깅 (DUIK 설치 시 자동 사용)
+// DUIK의 Bone, IK, FK 기능을 직접 호출하여 고급 리깅 구현
+function rigCharacterWithDUIK(comp, aeLayer, joints, usePercent, log, errorLog, si) {
+    var boneMap = {}; // part name → bone layer
+    var maxBends = 6;
+    var bendIdx = 0;
+
+    log.push("    ★ DUIK API 감지 → 고급 리깅 모드 활성화");
+
+    // 1단계: DUIK Bone 생성 (Duik.bone.create 또는 DuAEF 사용)
+    for (var ji = 0; ji < joints.length; ji++) {
+        var jDef = joints[ji];
+        var jPart = jDef.part || jDef.name || "body";
+        var rawX = Number(jDef.x) || 50;
+        var rawY = Number(jDef.y) || 50;
+        var jx = usePercent ? (rawX / 100) * comp.width : rawX;
+        var jy = usePercent ? (rawY / 100) * comp.height : rawY;
+
+        try {
+            var bone = null;
+            // DUIK Angela (Duik 네임스페이스)
+            if (typeof Duik !== "undefined" && Duik.bone && typeof Duik.bone.create === "function") {
+                bone = Duik.bone.create(comp, [jx, jy]);
+                if (bone) bone.name = "DUIK_" + jPart;
+            }
+            // DuAEF (Bassel 방식)
+            else if (typeof DuAEF !== "undefined" && typeof Duik !== "undefined") {
+                // DuAEF.Duik.Bone.create 또는 DuAEF 본 생성
+                if (Duik.Bone && typeof Duik.Bone.create === "function") {
+                    bone = Duik.Bone.create(comp, [jx, jy]);
+                    if (bone) bone.name = "DUIK_" + jPart;
+                }
+            }
+
+            // DUIK API 본 생성 실패 → 일반 Null로 폴백
+            if (!bone) {
+                var hierDef = BONE_HIERARCHY[jPart] || { parent: null, color: [0.5, 0.5, 0.5] };
+                bone = createBoneNull(comp, jPart, [jx, jy], hierDef.color);
+            }
+
+            boneMap[jPart] = bone;
+        } catch (boneErr) {
+            // DUIK 본 생성 실패 → 일반 Null
+            var hierDef2 = BONE_HIERARCHY[jPart] || { parent: null, color: [0.5, 0.5, 0.5] };
+            boneMap[jPart] = createBoneNull(comp, jPart, [jx, jy], hierDef2.color);
+            errorLog.push("씬 " + (si + 1) + " DUIK bone[" + jPart + "] 폴백: " + boneErr.toString());
+        }
+    }
+
+    // 2단계: 부모-자식 계층 설정
+    for (var partName in boneMap) {
+        if (!boneMap.hasOwnProperty(partName)) continue;
+        var hierDef3 = BONE_HIERARCHY[partName];
+        if (hierDef3 && hierDef3.parent && boneMap[hierDef3.parent]) {
+            try {
+                boneMap[partName].setParentWithJump(boneMap[hierDef3.parent]);
+            } catch (e) {}
+        }
+    }
+
+    // 3단계: IK 체인 설정 (팔, 다리)
+    var ikChains = [
+        { upper: "left_arm", lower: "left_hand", name: "L_Arm_IK" },
+        { upper: "right_arm", lower: "right_hand", name: "R_Arm_IK" },
+        { upper: "left_leg", lower: null, name: "L_Leg_IK" },
+        { upper: "right_leg", lower: null, name: "R_Leg_IK" }
+    ];
+
+    for (var ik = 0; ik < ikChains.length; ik++) {
+        var chain = ikChains[ik];
+        if (!boneMap[chain.upper]) continue;
+
+        try {
+            var hasUpper = boneMap[chain.upper];
+            var hasLower = chain.lower ? boneMap[chain.lower] : null;
+
+            // DUIK IK 적용 시도
+            var duikIKApplied = false;
+
+            if (typeof Duik !== "undefined") {
+                try {
+                    // Angela: Duik.ik.twoLayer()
+                    if (Duik.ik && typeof Duik.ik.twoLayer === "function" && hasUpper && hasLower) {
+                        // 레이어들을 선택해서 IK 적용
+                        comp.selection = [];
+                        hasUpper.selected = true;
+                        hasLower.selected = true;
+                        Duik.ik.twoLayer();
+                        comp.selection = [];
+                        duikIKApplied = true;
+                        log.push("    ★ DUIK IK 적용: " + chain.name);
+                    }
+                    // Bassel: Duik.IK.apply()
+                    else if (Duik.IK && typeof Duik.IK.apply === "function" && hasUpper && hasLower) {
+                        comp.selection = [];
+                        hasUpper.selected = true;
+                        hasLower.selected = true;
+                        Duik.IK.apply();
+                        comp.selection = [];
+                        duikIKApplied = true;
+                        log.push("    ★ DUIK IK 적용: " + chain.name);
+                    }
+                } catch (ikApiErr) {
+                    // DUIK IK API 호출 실패 → Expression IK 폴백
+                }
+            }
+
+            // DUIK IK 실패 시 → Expression 기반 2-Bone IK
+            if (!duikIKApplied && hasUpper && hasLower) {
+                var upperPos = hasUpper.property("Position").value;
+                var lowerPos = hasLower.property("Position").value;
+                var upperLen = Math.sqrt(
+                    Math.pow(lowerPos[0] - upperPos[0], 2) +
+                    Math.pow(lowerPos[1] - upperPos[1], 2)
+                );
+                var lowerLen = upperLen * 0.8;
+
+                // IK 이펙터 (컨트롤러) 생성
+                var effector = comp.layers.addNull();
+                effector.name = "IK_" + chain.name;
+                effector.property("Position").setValue(lowerPos);
+                effector.property("Scale").setValue([8, 8]);
+                effector.property("Opacity").setValue(60);
+                effector.guideLayer = true;
+                effector.label = 11; // 청록색
+
+                // 이펙터에 진자운동 Expression 적용
+                var jUpper = null;
+                var jLower = null;
+                for (var fj = 0; fj < joints.length; fj++) {
+                    var fPart = joints[fj].part || joints[fj].name;
+                    if (fPart === chain.upper) jUpper = joints[fj];
+                    if (fPart === chain.lower) jLower = joints[fj];
+                }
+                if (jLower) {
+                    var effSpeed = Number(jLower.speed) || 0.5;
+                    var effAmount = Number(jLower.amount) || 15;
+                    var effPhase = (Number(jLower.phase) || 0) * Math.PI / 180;
+                    effector.property("Position").expression =
+                        "var amt = " + effAmount + ";\n" +
+                        "var spd = " + effSpeed + ";\n" +
+                        "var ph = " + effPhase.toFixed(4) + ";\n" +
+                        "var swing = Math.sin(time * spd * Math.PI * 2 + ph) * amt;\n" +
+                        "value + [swing * 0.5, swing]";
+                }
+
+                // IK Expression 적용
+                var upperBoneName = hasUpper.name;
+                var lowerBoneName = hasLower.name;
+                var effectorLayerName = effector.name;
+
+                hasUpper.property("Rotation").expression =
+                    getIKExpression(upperBoneName, lowerBoneName, effectorLayerName, upperLen, lowerLen, true);
+                hasLower.property("Rotation").expression =
+                    getIKExpression(upperBoneName, lowerBoneName, effectorLayerName, upperLen, lowerLen, false);
+
+                log.push("    ★ Expression IK 적용: " + chain.name + " (2-Bone Solver)");
+            }
+        } catch (ikErr) {
+            errorLog.push("씬 " + (si + 1) + " IK[" + chain.name + "]: " + ikErr.toString());
+        }
+    }
+
+    // 4단계: FK 체인 설정 (척추: hips→torso→chest→neck→head)
+    var fkChain = ["hips", "torso", "chest", "neck", "head"];
+    var fkApplied = false;
+
+    try {
+        if (typeof Duik !== "undefined") {
+            // Angela: Duik.automation.walk 또는 FK
+            if (Duik.automation && typeof Duik.automation.fk === "function") {
+                var fkBones = [];
+                for (var fi = 0; fi < fkChain.length; fi++) {
+                    if (boneMap[fkChain[fi]]) fkBones.push(boneMap[fkChain[fi]]);
+                }
+                if (fkBones.length >= 2) {
+                    comp.selection = [];
+                    for (var fk = 0; fk < fkBones.length; fk++) {
+                        fkBones[fk].selected = true;
+                    }
+                    Duik.automation.fk();
+                    comp.selection = [];
+                    fkApplied = true;
+                    log.push("    ★ DUIK FK 적용: 척추 체인 (" + fkBones.length + "개 본)");
+                }
+            }
+        }
+    } catch (fkErr) {
+        // DUIK FK 실패 → Expression 폴백
+    }
+
+    // FK 미적용 시 → Expression 기반 FK (기존 방식)
+    if (!fkApplied) {
+        for (var fki = 0; fki < fkChain.length; fki++) {
+            var fkPart = fkChain[fki];
+            if (!boneMap[fkPart]) continue;
+
+            var fkJoint = null;
+            for (var fji = 0; fji < joints.length; fji++) {
+                if ((joints[fji].part || joints[fji].name) === fkPart) {
+                    fkJoint = joints[fji]; break;
+                }
+            }
+            if (!fkJoint) continue;
+
+            var fkMotion = fkJoint.motion || "breathe";
+            var fkAmount = Math.max(5, Math.min(30, Number(fkJoint.amount) || 8));
+            var fkSpeed = Math.max(0.2, Math.min(2.0, Number(fkJoint.speed) || 0.3));
+            var fkPhase = (Number(fkJoint.phase) || 0) * Math.PI / 180;
+
+            var parentPartName = null;
+            if (BONE_HIERARCHY[fkPart] && BONE_HIERARCHY[fkPart].parent && boneMap[BONE_HIERARCHY[fkPart].parent]) {
+                parentPartName = BONE_HIERARCHY[fkPart].parent;
+            }
+
+            if (fkMotion === "breathe" || fkMotion === "bob") {
+                boneMap[fkPart].property("Position").expression =
+                    getBoneExpression(fkMotion, fkAmount, fkSpeed, fkPhase, null);
+            } else {
+                boneMap[fkPart].property("Rotation").expression =
+                    getBoneExpression(fkMotion, fkAmount, fkSpeed, fkPhase, parentPartName);
+            }
+        }
+        log.push("    FK 척추 체인: Expression 기반 적용");
+    }
+
+    // 5단계: 남은 본들 (hair, tail, cape 등)에 Expression 적용
+    var coveredByIK = {};
+    for (var ci = 0; ci < ikChains.length; ci++) {
+        coveredByIK[ikChains[ci].upper] = true;
+        if (ikChains[ci].lower) coveredByIK[ikChains[ci].lower] = true;
+    }
+    var coveredByFK = {};
+    for (var cf = 0; cf < fkChain.length; cf++) {
+        coveredByFK[fkChain[cf]] = true;
+    }
+
+    for (var ji2 = 0; ji2 < joints.length; ji2++) {
+        var jDef2 = joints[ji2];
+        var jPart2 = jDef2.part || jDef2.name || "body";
+
+        // IK/FK에서 이미 처리된 본은 건너뛰기
+        if (coveredByIK[jPart2] || coveredByFK[jPart2]) continue;
+        if (!boneMap[jPart2]) continue;
+
+        var jMotion = jDef2.motion || "wave";
+        var jAmount = Math.max(5, Math.min(30, Number(jDef2.amount) || 10));
+        var jSpeed = Math.max(0.2, Math.min(2.0, Number(jDef2.speed) || 0.5));
+        var jPhase = (Number(jDef2.phase) || 0) * Math.PI / 180;
+
+        var parentPart = null;
+        if (BONE_HIERARCHY[jPart2] && BONE_HIERARCHY[jPart2].parent && boneMap[BONE_HIERARCHY[jPart2].parent]) {
+            parentPart = BONE_HIERARCHY[jPart2].parent;
+        }
+
+        if (jMotion === "breathe" || jMotion === "bob") {
+            boneMap[jPart2].property("Position").expression =
+                getBoneExpression(jMotion, jAmount, jSpeed, jPhase, null);
+        } else {
+            boneMap[jPart2].property("Rotation").expression =
+                getBoneExpression(jMotion, jAmount, jSpeed, jPhase, parentPart);
+        }
+    }
+
+    // 6단계: CC Bend It 연동 (모든 본에 대해)
+    for (var ji3 = 0; ji3 < joints.length && bendIdx < maxBends; ji3++) {
+        try {
+            var jDef3 = joints[ji3];
+            var jPart3 = jDef3.part || jDef3.name || "body";
+            var jMotion3 = jDef3.motion || "breathe";
+            var rawX3 = Number(jDef3.x) || 50;
+            var rawY3 = Number(jDef3.y) || 50;
+            var jx3 = usePercent ? (rawX3 / 100) * comp.width : rawX3;
+            var jy3 = usePercent ? (rawY3 / 100) * comp.height : rawY3;
+
+            if (!boneMap[jPart3]) continue;
+
+            var bendEff = aeLayer.property("Effects").addProperty("CC Bend It");
+            bendEff.name = "Rig_" + jPart3;
+
+            var bendLen = 100;
+            var isArm = (jPart3.indexOf("arm") >= 0 || jPart3.indexOf("hand") >= 0);
+            var isTail = (jPart3.indexOf("tail") >= 0 || jPart3.indexOf("cape") >= 0 || jPart3.indexOf("hair") >= 0);
+
+            if (isArm) {
+                bendEff.property("Start").setValue([jx3 - bendLen, jy3]);
+                bendEff.property("End").setValue([jx3 + bendLen, jy3]);
+            } else if (isTail) {
+                bendEff.property("Start").setValue([jx3, jy3 - bendLen * 1.5]);
+                bendEff.property("End").setValue([jx3, jy3 + bendLen * 1.5]);
+            } else {
+                bendEff.property("Start").setValue([jx3, jy3 - bendLen]);
+                bendEff.property("End").setValue([jx3, jy3 + bendLen]);
+            }
+
+            // CC Bend It의 Bend 값을 본에 연동
+            var boneName3 = boneMap[jPart3].name;
+            if (jMotion3 === "breathe" || jMotion3 === "bob") {
+                bendEff.property("Bend").expression =
+                    "var bone = thisComp.layer(\"" + boneName3 + "\");\n" +
+                    "try {\n" +
+                    "  var dy = bone.position[1] - bone.position.valueAtTime(0)[1];\n" +
+                    "  dy * 0.5;\n" +
+                    "} catch(e) { 0; }";
+            } else if (jMotion3 === "shake") {
+                var shakeSpd = Math.max(Number(jDef3.speed || 0.5) * 5, 3);
+                var shakeAmt = Number(jDef3.amount) || 10;
+                bendEff.property("Bend").expression =
+                    "wiggle(" + shakeSpd + ", " + shakeAmt + ")";
+            } else {
+                bendEff.property("Bend").expression =
+                    "var bone = thisComp.layer(\"" + boneName3 + "\");\n" +
+                    "try { bone.rotation; } catch(e) { 0; }";
+            }
+
+            bendIdx++;
+            log.push("    CC Bend It[" + jPart3 + "]: " + boneName3 + " 연동");
+        } catch (bendErr) {
+            errorLog.push("씬 " + (si + 1) + " DUIK bend[" + ji3 + "]: " + bendErr.toString());
         }
     }
 
@@ -1824,10 +2208,21 @@ function processV2(comp, data, projectFolder) {
                         log.push("    ★ 퍼센트 좌표 감지 → 픽셀로 자동 변환");
                     }
 
-                    // ★ 본 리깅 실행 (Null 레이어 계층 + CC Bend It 연동)
-                    var bendIdx = rigCharacterWithBones(comp, aeLayer, joints, usePercent, log, errorLog, si);
+                    // ★ DUIK 감지 → 고급 리깅 / 일반 본 리깅 자동 분기
+                    var bendIdx = 0;
+                    if (detectAndLoadDUIK()) {
+                        log.push("    ★ DUIK 설치 감지! → 고급 리깅 모드 (IK/FK 자동 적용)");
+                        try {
+                            bendIdx = rigCharacterWithDUIK(comp, aeLayer, joints, usePercent, log, errorLog, si);
+                        } catch (duikErr) {
+                            errorLog.push("씬 " + (si + 1) + " DUIK 리깅 실패 → 기본 본 리깅으로 폴백: " + duikErr.toString());
+                            bendIdx = rigCharacterWithBones(comp, aeLayer, joints, usePercent, log, errorLog, si);
+                        }
+                    } else {
+                        bendIdx = rigCharacterWithBones(comp, aeLayer, joints, usePercent, log, errorLog, si);
+                    }
 
-                    log.push("  → 본 리깅 완료! (본: " + joints.length + "개, CC Bend It: " + bendIdx + "개, 계층적 모션)");
+                    log.push("  → 본 리깅 완료! (본: " + joints.length + "개, CC Bend It: " + bendIdx + "개, " + (DUIK_LOADED ? "DUIK IK/FK" : "계층적 모션") + ")");
                     if (!firstImgLayer) firstImgLayer = aeLayer;
                 }
               } catch (puppetErr) {
