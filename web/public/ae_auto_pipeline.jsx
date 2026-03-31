@@ -78,62 +78,67 @@ function detectAndLoadDUIK() {
             app.path.toString() + "/Scripts"
         ];
 
+        // 모든 후보 경로 수집 (하위 폴더 우선 — libs/ 폴더가 같이 있어야 하므로)
+        var candidates = [];
+
         for (var si = 0; si < searchPaths.length; si++) {
             var folder = new Folder(searchPaths[si]);
             if (!folder.exists) continue;
 
-            // 1차: 현재 폴더에서 직접 검색
-            var files = folder.getFiles("*Duik*api*.jsxinc");
-            if (files.length > 0) { DUIK_API_PATH = files[0].fsName; break; }
-
-            files = folder.getFiles("*DuAEF*api*.jsxinc");
-            if (files.length > 0) { DUIK_API_PATH = files[0].fsName; break; }
-
-            var exact = new File(searchPaths[si] + "/Duik_api.jsxinc");
-            if (exact.exists) { DUIK_API_PATH = exact.fsName; break; }
-            exact = new File(searchPaths[si] + "/DuAEF_Duik_api.jsxinc");
-            if (exact.exists) { DUIK_API_PATH = exact.fsName; break; }
-
-            // 2차: 하위 폴더 검색 (Duik_API_17.x.x 같은 폴더 안에 있는 경우)
+            // 하위 폴더 먼저 검색 (Duik_API_17.x.x 폴더 안의 API가 libs/와 함께 있어 정상 동작)
             var subFolders = folder.getFiles();
             for (var sfi = 0; sfi < subFolders.length; sfi++) {
                 if (!(subFolders[sfi] instanceof Folder)) continue;
                 var sub = subFolders[sfi];
 
                 var subFiles = sub.getFiles("*Duik*api*.jsxinc");
-                if (subFiles.length > 0) { DUIK_API_PATH = subFiles[0].fsName; break; }
+                for (var sf = 0; sf < subFiles.length; sf++) candidates.push(subFiles[sf].fsName);
 
                 subFiles = sub.getFiles("*DuAEF*api*.jsxinc");
-                if (subFiles.length > 0) { DUIK_API_PATH = subFiles[0].fsName; break; }
+                for (var sf2 = 0; sf2 < subFiles.length; sf2++) candidates.push(subFiles[sf2].fsName);
 
                 var subExact = new File(sub.fsName + "/Duik_api.jsxinc");
-                if (subExact.exists) { DUIK_API_PATH = subExact.fsName; break; }
+                if (subExact.exists) candidates.push(subExact.fsName);
             }
-            if (DUIK_API_PATH) break;
+
+            // 현재 폴더에서 검색 (단독 파일은 후순위 — libs/ 없으면 로드 실패할 수 있음)
+            var files = folder.getFiles("*Duik*api*.jsxinc");
+            for (var f = 0; f < files.length; f++) candidates.push(files[f].fsName);
+
+            files = folder.getFiles("*DuAEF*api*.jsxinc");
+            for (var f2 = 0; f2 < files.length; f2++) candidates.push(files[f2].fsName);
+
+            var exact = new File(searchPaths[si] + "/Duik_api.jsxinc");
+            if (exact.exists) candidates.push(exact.fsName);
+            exact = new File(searchPaths[si] + "/DuAEF_Duik_api.jsxinc");
+            if (exact.exists) candidates.push(exact.fsName);
         }
 
-        if (!DUIK_API_PATH) return false;
+        if (candidates.length === 0) return false;
 
-        // DUIK API 로드 시도
-        try {
-            $.evalFile(new File(DUIK_API_PATH));
-            // DuAEF 초기화
-            if (typeof DuAEF !== "undefined") {
-                DuAEF.init("AE_Auto_Pipeline", "1.0", "AEAutoPipeline");
-                DuAEF.enterRunTime();
-                DUIK_LOADED = true;
-                return true;
+        // 각 후보를 시도 — 로드 성공하면 사용
+        for (var ci = 0; ci < candidates.length; ci++) {
+            try {
+                DUIK_API_PATH = candidates[ci];
+                $.evalFile(new File(DUIK_API_PATH));
+
+                if (typeof DuAEF !== "undefined") {
+                    DuAEF.init("AE_Auto_Pipeline", "1.0", "AEAutoPipeline");
+                    DuAEF.enterRunTime();
+                    DUIK_LOADED = true;
+                    return true;
+                }
+                if (typeof Duik !== "undefined") {
+                    DUIK_LOADED = true;
+                    return true;
+                }
+            } catch (loadErr) {
+                // 이 후보 실패 → 다음 후보 시도
+                DUIK_API_PATH = null;
             }
-            // Duik 네임스페이스 직접 확인 (Angela 버전)
-            if (typeof Duik !== "undefined") {
-                DUIK_LOADED = true;
-                return true;
-            }
-        } catch (loadErr) {
-            // API 로드 실패 → DUIK 없는 것으로 처리
-            DUIK_LOADED = false;
         }
 
+        DUIK_LOADED = false;
         return false;
     } catch (e) {
         return false;
@@ -292,7 +297,9 @@ function getIKExpression(upperBoneName, lowerBoneName, effectorName, upperLen, l
 }
 
 // ★ 본 기반 캐릭터 리깅 (DUIK 스타일)
-function rigCharacterWithBones(comp, aeLayer, joints, usePercent, log, errorLog, si) {
+// scaleFactor: 이미지 스케일 비율 (1.0 = 100%, 1.4 = 140% 등) — CC Bend It 좌표 변환용
+function rigCharacterWithBones(comp, aeLayer, joints, usePercent, log, errorLog, si, scaleFactor) {
+    if (!scaleFactor) scaleFactor = 1.0;
     var boneMap = {}; // name → bone layer
     var maxBends = 6;
     var bendIdx = 0;
@@ -364,22 +371,30 @@ function rigCharacterWithBones(comp, aeLayer, joints, usePercent, log, errorLog,
             }
 
             // CC Bend It를 이미지 레이어에 추가하고, 본의 rotation을 참조
+            // ★ CC Bend It는 레이어 로컬 좌표에서 동작 → 컴포지션 좌표를 변환 필수!
             var bendEff = aeLayer.property("Effects").addProperty("CC Bend It");
             bendEff.name = "Rig_" + jPart2;
 
-            var bendLen = 100;
+            // 레이어 로컬 좌표로 변환: 컴포지션 좌표를 이미지 원본 좌표로 변환
+            var imgW = aeLayer.source.width;
+            var imgH = aeLayer.source.height;
+            // 퍼센트 좌표는 이미지 크기 기준으로 직접 변환
+            var localX = usePercent ? (rawX2 / 100) * imgW : (jx2 / scaleFactor);
+            var localY = usePercent ? (rawY2 / 100) * imgH : (jy2 / scaleFactor);
+
+            var bendLen = Math.min(imgW, imgH) * 0.08; // 이미지 크기에 비례
             var isArm = (jPart2.indexOf("arm") >= 0 || jPart2.indexOf("hand") >= 0);
             var isTail = (jPart2.indexOf("tail") >= 0 || jPart2.indexOf("cape") >= 0 || jPart2.indexOf("hair") >= 0);
 
             if (isArm) {
-                bendEff.property("Start").setValue([jx2 - bendLen, jy2]);
-                bendEff.property("End").setValue([jx2 + bendLen, jy2]);
+                bendEff.property("Start").setValue([localX - bendLen, localY]);
+                bendEff.property("End").setValue([localX + bendLen, localY]);
             } else if (isTail) {
-                bendEff.property("Start").setValue([jx2, jy2 - bendLen * 1.5]);
-                bendEff.property("End").setValue([jx2, jy2 + bendLen * 1.5]);
+                bendEff.property("Start").setValue([localX, localY - bendLen * 1.5]);
+                bendEff.property("End").setValue([localX, localY + bendLen * 1.5]);
             } else {
-                bendEff.property("Start").setValue([jx2, jy2 - bendLen]);
-                bendEff.property("End").setValue([jx2, jy2 + bendLen]);
+                bendEff.property("Start").setValue([localX, localY - bendLen]);
+                bendEff.property("End").setValue([localX, localY + bendLen]);
             }
 
             // ★ CC Bend It의 Bend 값을 본의 Rotation에 연동
@@ -677,7 +692,9 @@ function rigCharacterWithDUIK(comp, aeLayer, joints, usePercent, log, errorLog, 
         }
     }
 
-    // 6단계: CC Bend It 연동 (모든 본에 대해)
+    // 6단계: CC Bend It 연동 (모든 본에 대해) — 레이어 로컬 좌표 사용
+    var imgW3 = aeLayer.source.width;
+    var imgH3 = aeLayer.source.height;
     for (var ji3 = 0; ji3 < joints.length && bendIdx < maxBends; ji3++) {
         try {
             var jDef3 = joints[ji3];
@@ -685,27 +702,28 @@ function rigCharacterWithDUIK(comp, aeLayer, joints, usePercent, log, errorLog, 
             var jMotion3 = jDef3.motion || "breathe";
             var rawX3 = Number(jDef3.x) || 50;
             var rawY3 = Number(jDef3.y) || 50;
-            var jx3 = usePercent ? (rawX3 / 100) * comp.width : rawX3;
-            var jy3 = usePercent ? (rawY3 / 100) * comp.height : rawY3;
+            // ★ 레이어 로컬 좌표로 변환
+            var localX3 = usePercent ? (rawX3 / 100) * imgW3 : rawX3;
+            var localY3 = usePercent ? (rawY3 / 100) * imgH3 : rawY3;
 
             if (!boneMap[jPart3]) continue;
 
             var bendEff = aeLayer.property("Effects").addProperty("CC Bend It");
             bendEff.name = "Rig_" + jPart3;
 
-            var bendLen = 100;
+            var bendLen = Math.min(imgW3, imgH3) * 0.08;
             var isArm = (jPart3.indexOf("arm") >= 0 || jPart3.indexOf("hand") >= 0);
             var isTail = (jPart3.indexOf("tail") >= 0 || jPart3.indexOf("cape") >= 0 || jPart3.indexOf("hair") >= 0);
 
             if (isArm) {
-                bendEff.property("Start").setValue([jx3 - bendLen, jy3]);
-                bendEff.property("End").setValue([jx3 + bendLen, jy3]);
+                bendEff.property("Start").setValue([localX3 - bendLen, localY3]);
+                bendEff.property("End").setValue([localX3 + bendLen, localY3]);
             } else if (isTail) {
-                bendEff.property("Start").setValue([jx3, jy3 - bendLen * 1.5]);
-                bendEff.property("End").setValue([jx3, jy3 + bendLen * 1.5]);
+                bendEff.property("Start").setValue([localX3, localY3 - bendLen * 1.5]);
+                bendEff.property("End").setValue([localX3, localY3 + bendLen * 1.5]);
             } else {
-                bendEff.property("Start").setValue([jx3, jy3 - bendLen]);
-                bendEff.property("End").setValue([jx3, jy3 + bendLen]);
+                bendEff.property("Start").setValue([localX3, localY3 - bendLen]);
+                bendEff.property("End").setValue([localX3, localY3 + bendLen]);
             }
 
             // CC Bend It의 Bend 값을 본에 연동
@@ -2225,10 +2243,10 @@ function processV2(comp, data, projectFolder) {
                             bendIdx = rigCharacterWithDUIK(comp, aeLayer, joints, usePercent, log, errorLog, si);
                         } catch (duikErr) {
                             errorLog.push("씬 " + (si + 1) + " DUIK 리깅 실패 → 기본 본 리깅으로 폴백: " + duikErr.toString());
-                            bendIdx = rigCharacterWithBones(comp, aeLayer, joints, usePercent, log, errorLog, si);
+                            bendIdx = rigCharacterWithBones(comp, aeLayer, joints, usePercent, log, errorLog, si, scaleFactor);
                         }
                     } else {
-                        bendIdx = rigCharacterWithBones(comp, aeLayer, joints, usePercent, log, errorLog, si);
+                        bendIdx = rigCharacterWithBones(comp, aeLayer, joints, usePercent, log, errorLog, si, scaleFactor);
                     }
 
                     log.push("  → 본 리깅 완료! (본: " + joints.length + "개, CC Bend It: " + bendIdx + "개, " + (DUIK_LOADED ? "DUIK IK/FK" : "계층적 모션") + ")");
