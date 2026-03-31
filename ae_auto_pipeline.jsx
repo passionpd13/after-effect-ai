@@ -82,19 +82,34 @@ function detectAndLoadDUIK() {
             var folder = new Folder(searchPaths[si]);
             if (!folder.exists) continue;
 
-            // DUIK Angela API
+            // 1차: 현재 폴더에서 직접 검색
             var files = folder.getFiles("*Duik*api*.jsxinc");
             if (files.length > 0) { DUIK_API_PATH = files[0].fsName; break; }
 
-            // DuAEF API
             files = folder.getFiles("*DuAEF*api*.jsxinc");
             if (files.length > 0) { DUIK_API_PATH = files[0].fsName; break; }
 
-            // Duik_api.jsxinc (정확한 이름)
             var exact = new File(searchPaths[si] + "/Duik_api.jsxinc");
             if (exact.exists) { DUIK_API_PATH = exact.fsName; break; }
             exact = new File(searchPaths[si] + "/DuAEF_Duik_api.jsxinc");
             if (exact.exists) { DUIK_API_PATH = exact.fsName; break; }
+
+            // 2차: 하위 폴더 검색 (Duik_API_17.x.x 같은 폴더 안에 있는 경우)
+            var subFolders = folder.getFiles();
+            for (var sfi = 0; sfi < subFolders.length; sfi++) {
+                if (!(subFolders[sfi] instanceof Folder)) continue;
+                var sub = subFolders[sfi];
+
+                var subFiles = sub.getFiles("*Duik*api*.jsxinc");
+                if (subFiles.length > 0) { DUIK_API_PATH = subFiles[0].fsName; break; }
+
+                subFiles = sub.getFiles("*DuAEF*api*.jsxinc");
+                if (subFiles.length > 0) { DUIK_API_PATH = subFiles[0].fsName; break; }
+
+                var subExact = new File(sub.fsName + "/Duik_api.jsxinc");
+                if (subExact.exists) { DUIK_API_PATH = subExact.fsName; break; }
+            }
+            if (DUIK_API_PATH) break;
         }
 
         if (!DUIK_API_PATH) return false;
