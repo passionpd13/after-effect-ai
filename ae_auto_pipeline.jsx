@@ -1733,15 +1733,17 @@ function addToRenderQueue(comp, renderSettings) {
         }
     }
 
-    // 출력 경로 (파일명에 이미 확장자가 있으면 그대로, 없으면 format 사용)
+    // 출력 경로: 프로젝트 폴더(JSON 위치)에 저장 (OneDrive 바탕화면 문제 방지)
     var outFilename = renderSettings.output_filename || (comp.name + "." + format);
     // 파일명의 확장자가 실제 format과 다르면 교체 (mp4→avi 등)
     if (outFilename.match(/\.mp4$/i) && format === "avi") {
         outFilename = outFilename.replace(/\.mp4$/i, ".avi");
     }
-    var outputPath = new File(
-        Folder.desktop.fsName + "/" + outFilename
-    );
+    // 프로젝트 폴더가 있으면 거기에, 없으면 내 문서에 저장
+    var outputDir = typeof PROJECT_FOLDER !== "undefined" && PROJECT_FOLDER
+        ? PROJECT_FOLDER
+        : Folder.myDocuments.fsName;
+    var outputPath = new File(outputDir + "/" + outFilename);
     outputModule.file = outputPath;
 
     return renderItem;
@@ -2512,6 +2514,7 @@ function main() {
     if (!jsonFile) return;
 
     var projectFolder = jsonFile.parent.fsName;
+    var PROJECT_FOLDER = projectFolder; // 렌더링 출력 경로용 전역 변수
 
     // JSON 로드
     var data = loadJSON(jsonFile.fsName);
