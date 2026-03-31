@@ -296,7 +296,205 @@ function getIKExpression(upperBoneName, lowerBoneName, effectorName, upperLen, l
     }
 }
 
-// ★ 본 기반 캐릭터 리깅 (DUIK 스타일)
+// ★ Puppet Pin용 Expression 생성 (핀 Position 애니메이션)
+// CC Bend It의 스칼라 Bend 값과 달리 [x, y] 2D 오프셋을 반환
+function getPinExpression(motion, amount, speed, phase, parentBoneName) {
+    var phaseStr = phase.toFixed(4);
+
+    // 부모 본의 움직임을 상속
+    var parentInfluence = "";
+    if (parentBoneName) {
+        parentInfluence =
+            "var pDelta = [0, 0];\n" +
+            "try {\n" +
+            "  var p = thisComp.layer(\"BONE_" + parentBoneName + "\");\n" +
+            "  pDelta = [p.position[0] - p.position.valueAtTime(0)[0],\n" +
+            "            p.position[1] - p.position.valueAtTime(0)[1]];\n" +
+            "  pDelta = pDelta * 0.3;\n" +
+            "} catch(e) {}\n";
+    }
+
+    if (motion === "breathe") {
+        return "var amt = " + amount + ";\n" +
+            "var spd = " + speed + ";\n" +
+            "var ph = " + phaseStr + ";\n" +
+            "var breath = Math.sin(time * spd * Math.PI * 2 + ph) * amt;\n" +
+            "value + [0, breath]";
+    } else if (motion === "nod") {
+        return parentInfluence +
+            "var amt = " + amount + ";\n" +
+            "var spd = " + speed + ";\n" +
+            "var ph = " + phaseStr + ";\n" +
+            "var nod = Math.sin(time * spd * Math.PI * 2 + ph) * amt;\n" +
+            "value + [nod * 0.3, nod]" + (parentBoneName ? " + pDelta" : "");
+    } else if (motion === "swing") {
+        return parentInfluence +
+            "var amt = " + amount + ";\n" +
+            "var spd = " + speed + ";\n" +
+            "var ph = " + phaseStr + ";\n" +
+            "var sw = Math.sin(time * spd * Math.PI * 2 + ph) * amt;\n" +
+            "value + [sw, Math.abs(sw) * 0.2]" + (parentBoneName ? " + pDelta" : "");
+    } else if (motion === "wave") {
+        return parentInfluence +
+            "var amt = " + amount + ";\n" +
+            "var spd = " + speed + ";\n" +
+            "var ph = " + phaseStr + ";\n" +
+            "var w1 = Math.sin(time * spd * Math.PI * 2 + ph) * amt;\n" +
+            "var w2 = Math.sin(time * spd * 1.7 * Math.PI * 2 + ph + 1.2) * amt * 0.3;\n" +
+            "value + [w1 + w2, (w1 + w2) * 0.15]" + (parentBoneName ? " + pDelta" : "");
+    } else if (motion === "shake") {
+        return "wiggle(" + Math.max(speed * 5, 3) + ", " + amount + ")";
+    } else if (motion === "bob") {
+        return "var amt = " + amount + ";\n" +
+            "var spd = " + speed + ";\n" +
+            "var ph = " + phaseStr + ";\n" +
+            "var bob = Math.sin(time * spd * Math.PI * 2 + ph) * amt;\n" +
+            "value + [0, bob]";
+    } else {
+        return parentInfluence +
+            "var amt = " + amount + ";\n" +
+            "var spd = " + speed + ";\n" +
+            "var ph = " + phaseStr + ";\n" +
+            "var mv = Math.sin(time * spd * Math.PI * 2 + ph) * amt;\n" +
+            "value + [mv * 0.5, mv]" + (parentBoneName ? " + pDelta" : "");
+    }
+}
+
+// ★ Puppet Pin 기반 캐릭터 리깅 (메쉬 변형 — CC Bend It보다 자연스러운 결과)
+function rigCharacterWithPuppetPins(comp, aeLayer, joints, fixedPins, usePercent, log, errorLog, si, scaleFactor) {
+    if (!scaleFactor) scaleFactor = 1.0;
+    var imgW = aeLayer.source.width;
+    var imgH = aeLayer.source.height;
+
+    log.push("    ★ Puppet Pin 리깅 모드");
+
+    // 1. Puppet 이펙트 추가
+    var puppetEff = aeLayer.property("Effects").addProperty("ADBE FreePin3");
+    puppetEff.name = "CharRig";
+
+    // 2. 메쉬/디폼 그룹 탐색
+    var deformGroup = null;
+    var starchGroup = null;
+    try {
+        // Match name 방식 (AE CC 2014+)
+        var arap = puppetEff.property("ADBE FreePin3 arap group");
+        var mesh1 = arap.property(1); // Mesh 1
+        var meshProp = mesh1.property("ADBE FreePin3 mesh");
+        deformGroup = meshProp.property("ADBE FreePin3 deform group");
+        try { starchGroup = meshProp.property("ADBE FreePin3 starch group"); } catch(e) {}
+    } catch (navErr) {
+        // Display name 폴백
+        try {
+            var puppet = puppetEff.property("Puppet");
+            var mesh1b = puppet.property("Mesh 1");
+            deformGroup = mesh1b.property("Deform");
+            try { starchGroup = mesh1b.property("Starch"); } catch(e2) {}
+        } catch (navErr2) {
+            throw new Error("Puppet Pin 속성 탐색 실패: " + navErr2.toString());
+        }
+    }
+
+    if (!deformGroup) throw new Error("Puppet Pin Deform 그룹을 찾을 수 없습니다");
+
+    // 이미지 크기 기반 amount 스케일링 (500px 기준 정규화)
+    var pixelScale = Math.min(imgW, imgH) / 500;
+
+    // 3. 움직이는 핀 추가 (joints)
+    var pinCount = 0;
+    for (var ji = 0; ji < joints.length; ji++) {
+        try {
+            var jDef = joints[ji];
+            var jPart = jDef.part || jDef.name || "body";
+            var jMotion = jDef.motion || "breathe";
+            var jAmount = Math.max(3, Math.min(20, Number(jDef.amount) || 8));
+            var jSpeed = Math.max(0.2, Math.min(2.0, Number(jDef.speed) || 0.4));
+            var jPhase = (Number(jDef.phase) || 0) * Math.PI / 180;
+            var rawX = Number(jDef.x) || 50;
+            var rawY = Number(jDef.y) || 50;
+
+            // 레이어 로컬 좌표
+            var localX = usePercent ? (rawX / 100) * imgW : rawX;
+            var localY = usePercent ? (rawY / 100) * imgH : rawY;
+
+            // amount를 픽셀 단위로 스케일링
+            var scaledAmount = jAmount * pixelScale;
+
+            // 부모 본 이름
+            var parentPartName = null;
+            if (BONE_HIERARCHY[jPart] && BONE_HIERARCHY[jPart].parent) {
+                parentPartName = BONE_HIERARCHY[jPart].parent;
+            }
+
+            // 디폼 핀 추가
+            var pin = deformGroup.addProperty("ADBE FreePin3 deform pin");
+            pin.name = "Pin_" + jPart;
+            var pinPos = pin.property("ADBE FreePin3 pin position");
+            if (!pinPos) pinPos = pin.property("Position");
+            pinPos.setValue([localX, localY]);
+
+            // Expression으로 모션 적용
+            pinPos.expression = getPinExpression(jMotion, scaledAmount, jSpeed, jPhase, parentPartName);
+
+            pinCount++;
+            log.push("    핀[" + jPart + "]: " + jMotion + " amt:" + scaledAmount.toFixed(1) +
+                     "px spd:" + jSpeed + " at(" + Math.round(localX) + "," + Math.round(localY) + ")");
+        } catch (pinErr) {
+            errorLog.push("씬 " + (si + 1) + " pin[" + ji + "]: " + pinErr.toString());
+        }
+    }
+
+    // 4. 고정 핀 추가 (fixed_pins — 발/바닥 등)
+    if (!fixedPins) fixedPins = [];
+    if (fixedPins.length === 0) {
+        // 기본 고정 핀: 하단 좌우 (발 위치)
+        fixedPins = [
+            { name: "left_foot", x: 42, y: 95 },
+            { name: "right_foot", x: 58, y: 95 }
+        ];
+    }
+
+    for (var fi = 0; fi < fixedPins.length; fi++) {
+        try {
+            var fp = fixedPins[fi];
+            var fpX = usePercent ? (Number(fp.x) / 100) * imgW : Number(fp.x);
+            var fpY = usePercent ? (Number(fp.y) / 100) * imgH : Number(fp.y);
+
+            // Starch 핀 시도 (고정도가 높음)
+            if (starchGroup) {
+                try {
+                    var starchPin = starchGroup.addProperty("ADBE FreePin3 starch pin");
+                    starchPin.name = "Fixed_" + (fp.name || fi);
+                    var starchPos = starchPin.property("ADBE FreePin3 pin position");
+                    if (!starchPos) starchPos = starchPin.property("Position");
+                    starchPos.setValue([fpX, fpY]);
+                    // 강도 100 (완전 고정)
+                    try {
+                        starchPin.property("ADBE FreePin3 pin starch amount").setValue(100);
+                        starchPin.property("ADBE FreePin3 pin starch extent").setValue(80);
+                    } catch(e) {}
+                    log.push("    고정핀[" + (fp.name || fi) + "]: starch at(" + Math.round(fpX) + "," + Math.round(fpY) + ")");
+                    continue;
+                } catch(starchErr) {
+                    // Starch 실패 → deform 핀으로 폴백
+                }
+            }
+
+            // Starch 불가 → 정적 deform 핀 (Expression 없음 = 고정)
+            var fixedPin = deformGroup.addProperty("ADBE FreePin3 deform pin");
+            fixedPin.name = "Fixed_" + (fp.name || fi);
+            var fixedPinPos = fixedPin.property("ADBE FreePin3 pin position");
+            if (!fixedPinPos) fixedPinPos = fixedPin.property("Position");
+            fixedPinPos.setValue([fpX, fpY]);
+            log.push("    고정핀[" + (fp.name || fi) + "]: deform(고정) at(" + Math.round(fpX) + "," + Math.round(fpY) + ")");
+        } catch (fpErr) {
+            errorLog.push("씬 " + (si + 1) + " fixed_pin[" + fi + "]: " + fpErr.toString());
+        }
+    }
+
+    return pinCount;
+}
+
+// ★ 본 기반 캐릭터 리깅 (CC Bend It — Puppet Pin 폴백용)
 // scaleFactor: 이미지 스케일 비율 (1.0 = 100%, 1.4 = 140% 등) — CC Bend It 좌표 변환용
 function rigCharacterWithBones(comp, aeLayer, joints, usePercent, log, errorLog, si, scaleFactor) {
     if (!scaleFactor) scaleFactor = 1.0;
@@ -2237,21 +2435,36 @@ function processV2(comp, data, projectFolder) {
                         log.push("    ★ 퍼센트 좌표 감지 → 픽셀로 자동 변환");
                     }
 
-                    // ★ DUIK 감지 → 고급 리깅 / 일반 본 리깅 자동 분기
-                    var bendIdx = 0;
-                    if (detectAndLoadDUIK()) {
-                        log.push("    ★ DUIK 설치 감지! → 고급 리깅 모드 (IK/FK 자동 적용)");
-                        try {
-                            bendIdx = rigCharacterWithDUIK(comp, aeLayer, joints, usePercent, log, errorLog, si);
-                        } catch (duikErr) {
-                            errorLog.push("씬 " + (si + 1) + " DUIK 리깅 실패 → 기본 본 리깅으로 폴백: " + duikErr.toString());
-                            bendIdx = rigCharacterWithBones(comp, aeLayer, joints, usePercent, log, errorLog, si, scaleFactor);
+                    // ★ 리깅 방식 자동 선택: Puppet Pin → DUIK → CC Bend It
+                    var rigCount = 0;
+                    var rigMethod = "none";
+                    var fixedPins = layerDef.fixed_pins || [];
+
+                    // 1순위: Puppet Pin (메쉬 변형 — 가장 자연스러운 결과)
+                    try {
+                        rigCount = rigCharacterWithPuppetPins(comp, aeLayer, joints, fixedPins, usePercent, log, errorLog, si, scaleFactor);
+                        rigMethod = "Puppet Pin";
+                    } catch (ppErr) {
+                        errorLog.push("씬 " + (si + 1) + " Puppet Pin 실패 → 폴백: " + ppErr.toString());
+
+                        // 2순위: DUIK (IK/FK)
+                        if (detectAndLoadDUIK()) {
+                            try {
+                                rigCount = rigCharacterWithDUIK(comp, aeLayer, joints, usePercent, log, errorLog, si);
+                                rigMethod = "DUIK IK/FK";
+                            } catch (duikErr) {
+                                errorLog.push("씬 " + (si + 1) + " DUIK 실패 → CC Bend It 폴백: " + duikErr.toString());
+                            }
                         }
-                    } else {
-                        bendIdx = rigCharacterWithBones(comp, aeLayer, joints, usePercent, log, errorLog, si, scaleFactor);
+
+                        // 3순위: CC Bend It (최종 폴백)
+                        if (rigMethod === "none") {
+                            rigCount = rigCharacterWithBones(comp, aeLayer, joints, usePercent, log, errorLog, si, scaleFactor);
+                            rigMethod = "CC Bend It";
+                        }
                     }
 
-                    log.push("  → 본 리깅 완료! (본: " + joints.length + "개, CC Bend It: " + bendIdx + "개, " + (DUIK_LOADED ? "DUIK IK/FK" : "계층적 모션") + ")");
+                    log.push("  → 리깅 완료! (" + rigMethod + ", 핀/본: " + rigCount + "개, joints: " + joints.length + "개)");
                     if (!firstImgLayer) firstImgLayer = aeLayer;
                 }
               } catch (puppetErr) {
